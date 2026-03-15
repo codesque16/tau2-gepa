@@ -788,6 +788,9 @@ class TrackingConfig:
     use_mlflow: bool = False
     mlflow_tracking_uri: str | None = None
     mlflow_experiment_name: str | None = None
+    use_logfire: bool = False
+    logfire_api_key: str | None = None
+    logfire_run_name: str | None = None
 
 
 @dataclass
@@ -1365,6 +1368,9 @@ def optimize_anything(
         use_mlflow=config.tracking.use_mlflow,
         mlflow_tracking_uri=config.tracking.mlflow_tracking_uri,
         mlflow_experiment_name=config.tracking.mlflow_experiment_name,
+        use_logfire=config.tracking.use_logfire,
+        logfire_api_key=config.tracking.logfire_api_key,
+        logfire_run_name=config.tracking.logfire_run_name,
     )
 
     # --- 9. Build reflection prompt template from objective/background if provided ---

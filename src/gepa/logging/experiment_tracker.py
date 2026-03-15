@@ -28,10 +28,15 @@ class ExperimentTracker:
         use_mlflow: bool = False,
         mlflow_tracking_uri: str | None = None,
         mlflow_experiment_name: str | None = None,
+        use_logfire: bool = False,
+        logfire_api_key: str | None = None,
+        logfire_run_name: str | None = None,
     ):
         self.use_wandb = use_wandb
         self.use_mlflow = use_mlflow
-
+        self.use_logfire = use_logfire
+        self.logfire_api_key = logfire_api_key
+        self.logfire_run_name = logfire_run_name
         self.wandb_api_key = wandb_api_key
         self.wandb_init_kwargs = wandb_init_kwargs or {}
         self.mlflow_tracking_uri = mlflow_tracking_uri
@@ -45,6 +50,20 @@ class ExperimentTracker:
             self._initialize_wandb()
         if self.use_mlflow:
             self._initialize_mlflow()
+        if self.use_logfire:
+            self._initialize_logfire()
+
+    def _initialize_logfire(self):
+        """Initialize logfire."""
+        try:
+            import logfire  # type: ignore
+
+            if self.logfire_api_key:
+                logfire.login(api_key=self.logfire_api_key)
+        except ImportError:
+            raise ImportError("logfire is not installed. Please install it or set backend='wandb' or 'mlflow' or 'none'.")
+        except Exception as e:
+            raise RuntimeError(f"Error initializing logfire: {e}")
 
     def _initialize_wandb(self):
         """Initialize wandb."""
