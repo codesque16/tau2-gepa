@@ -6,6 +6,7 @@ to understand in Logfire. Captures candidate evolution: current_candidate_set,
 pareto sets with scores, reject/accept, and tree-based parent-child lineage.
 """
 
+import hashlib
 from typing import Any
 
 from gepa.core.callbacks import (
@@ -174,7 +175,16 @@ class LogfireSpanCallback:
 
     def on_proposal_start(self, event: ProposalStartEvent) -> None:
         """Reflection phase: LLM proposes new candidate. Push so reflection/completion nests under it."""
-        self._push_span(f"On reflection (proposal start): [{event['iteration']}](parent: {event['parent_candidate']})", **event)
+        parent_text = event.get("parent_candidate") or ""
+        parent_hash = hashlib.sha256(parent_text.encode("utf-8")).hexdigest()[:12] if parent_text else ""
+        name_suffix = f"(parent_hash: {parent_hash})" if parent_hash else "(parent: <none>)"
+        event_with_hash = dict(event)
+        if parent_hash:
+            event_with_hash["parent_candidate_sha256_12"] = parent_hash
+        self._push_span(
+            f"On reflection (proposal start): [{event['iteration']}] {name_suffix}",
+            **event_with_hash,
+        )
 
     def on_proposal_end(self, event: ProposalEndEvent) -> None:
         """Pop reflection span, then push/pop proposal end so nothing nests under it."""
@@ -188,7 +198,11 @@ class LogfireSpanCallback:
 
     def on_candidate_accepted(self, event: CandidateAcceptedEvent) -> None:
         """Push and pop so span is a leaf (no spurious nesting)."""
-        self._push_span(f"On candidate accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}](new_score: {event['new_score']:.2f})", **event)
+        self._push_span(
+            f"On candidate accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}]"
+            f"(old_score: {event['old_score']:.2f} -> new_score: {event['new_score']:.2f})",
+            **event,
+        )
         self._pop_span()
 
     def on_candidate_rejected(self, event: CandidateRejectedEvent) -> None:
@@ -243,7 +257,14 @@ class LogfireSpanCallback:
 
     def on_budget_updated(self, event: BudgetUpdatedEvent) -> None:
         """Push and pop so budget update is a leaf (completion/candidate_rejected don't nest under it)."""
-        self._push_span(f"On budget updated: [{event['iteration']}][{event['metric_calls_used']}/{event['metric_calls_remaining']}]", **event)
+        used = event.get("metric_calls_used", 0)
+        remaining = event.get("metric_calls_remaining")
+        total = used + (remaining or 0)
+        label = f"{used}/{total}" if total else f"{used}/?"
+        self._push_span(
+            f"On budget updated: [{event['iteration']}][{label}]",
+            **event,
+        )
         self._pop_span()
 
     def on_budget_exhausted(self, event: BudgetExhaustedEvent) -> None:

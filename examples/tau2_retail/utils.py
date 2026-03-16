@@ -43,6 +43,13 @@ Preserve the structure (markdown, sections) and improve clarity, completeness, a
 
 OBJECTIVE = """Maximize the pass@1 score (fraction of retail tasks solved) on the tau2 benchmark."""
 
+# Train-only mode: maximize score on this fixed set of task IDs (no valset).
+TRAIN_ONLY_TASK_IDS = [
+    "12", "17", "23", "27", "32", "33", "34", "45", "42", "43",
+    "56", "57", "66", "68", "78", "73", "86", "81", "91", "113", "102", "103",
+]
+OBJECTIVE_TRAIN_ONLY = "Maximize the pass@1 score on the training set (no held-out valset)."
+
 
 def load_policy_solo_seed(split_path: Path | None = None) -> str:
     """Load policy_solo.md content as the seed candidate."""
@@ -104,6 +111,17 @@ def load_tau2_retail_dataset(
     val_set = [TaskExample(task_id=tid) for tid in val_task_ids]
 
     return train_set, val_set
+
+
+def load_tau2_retail_train_only(
+    task_ids: list[str] | None = None,
+) -> list[TaskExample]:
+    """Load only a fixed list of task IDs as the training set (no valset).
+
+    Use for train-only optimization: objective is to maximize score on this set.
+    """
+    ids = task_ids if task_ids is not None else TRAIN_ONLY_TASK_IDS
+    return [TaskExample(task_id=tid) for tid in ids]
 
 
 # =============================================================================

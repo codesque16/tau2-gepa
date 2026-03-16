@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tau2 retail agent optimization with GEPA.
 
-Optimizes policy_solo.md for the tau2 retail customer-service agent
-using GEPA in generalization mode: train on train split, validate on test split.
+Train-only mode: no valset, objective is to maximize score on the training set.
+Task IDs to improve on: 12, 17, 23, 27, 32, 33, 34, 45, 42, 43, 56, 57, 66, 68, 78, 73, 86, 81, 91, 113, 102, 103.
 
 Requires tau2: pip install -e /path/to/tau2-mermaid/tau2-bench
 Set TAU2_DATA_DIR to tau2-bench/data (or ensure data/ is relative to tau2-bench).
@@ -18,11 +18,13 @@ from datetime import datetime
 
 from examples.tau2_retail.utils import (
     BACKGROUND,
-    OBJECTIVE,
+    # OBJECTIVE,           # generalization mode
     evaluate,
-    evaluate_on_dataset,
+    # evaluate_on_dataset, # final comparison on valset
     load_policy_solo_seed,
-    load_tau2_retail_dataset,
+    # load_tau2_retail_dataset,
+    load_tau2_retail_train_only,
+    OBJECTIVE_TRAIN_ONLY,
 )
 from gepa.optimize_anything import (
     EngineConfig,
@@ -44,7 +46,7 @@ SEED_CANDIDATE = None  # Loaded from load_policy_solo_seed()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Tau2 retail agent optimization with GEPA")
+    parser = argparse.ArgumentParser(description="Tau2 retail agent optimization with GEPA (train-only)")
     parser.add_argument(
         "--fresh",
         action="store_true",
@@ -62,8 +64,10 @@ def main():
 
     os.makedirs(log_dir, exist_ok=True)
 
-    train_set, val_set = load_tau2_retail_dataset()
-    print(f"Dataset: train={len(train_set)}, val (test)={len(val_set)}")
+    # Train-only: fixed task IDs, no valset
+    train_set = load_tau2_retail_train_only()
+    # train_set, val_set = load_tau2_retail_dataset()
+    print(f"Dataset: train={len(train_set)} (no valset)")
 
     seed_candidate = SEED_CANDIDATE or load_policy_solo_seed()
 
@@ -81,7 +85,7 @@ def main():
             run_dir=log_dir,
             max_metric_calls=100,
             parallel=True,
-            max_workers=8,
+            max_workers=10,
             cache_evaluation=True,
             track_best_outputs=True,
             candidate_selection_strategy="pareto",
@@ -89,7 +93,7 @@ def main():
         ),
         reflection=ReflectionConfig(
             reflection_lm=REFLECTION_LM,
-            reflection_minibatch_size=2,
+            reflection_minibatch_size=10,
         ),
         tracking=TrackingConfig(
             use_wandb=True,
@@ -101,41 +105,40 @@ def main():
         seed_candidate=seed_candidate,
         evaluator=evaluator,
         dataset=train_set,
-        valset=val_set,
+        valset=None,  # train-only: maximize score on training set
         config=config,
-        objective=OBJECTIVE,
+        objective=OBJECTIVE_TRAIN_ONLY,
         background=BACKGROUND,
     )
 
     best_policy = result.best_candidate
-    best_val_score = result.val_aggregate_scores[result.best_idx]
-    print(f"\nBest val (test) score: {best_val_score:.4f}")
+    # With valset=None, best is chosen by aggregate score on the same train set
+    best_train_score = result.val_aggregate_scores[result.best_idx]
+    print(f"\nBest train score: {best_train_score:.4f}")
 
     out_path = f"{log_dir}/best_policy.md"
     with open(out_path, "w") as f:
         f.write(best_policy or "")
     print(f"Saved: {out_path}")
 
-    # Final comparison
-    print("\nEvaluating baseline (policy_solo.md)...")
-    baseline_score = evaluate_on_dataset(
-        seed_candidate,
-        val_set,
-        llm_agent=LLM_AGENT,
-        seed=SEED,
-    )
-
-    print("\nEvaluating best optimized policy...")
-    optimized_score = evaluate_on_dataset(
-        best_policy,
-        val_set,
-        llm_agent=LLM_AGENT,
-        seed=SEED,
-    )
-
-    print(f"\nBaseline pass@1:  {baseline_score:.2%}")
-    print(f"Optimized pass@1:  {optimized_score:.2%}")
-    print(f"Improvement:       {optimized_score - baseline_score:+.2%}")
+    # Final comparison (on same training set)
+    # print("\nEvaluating baseline (policy_solo.md)...")
+    # baseline_score = evaluate_on_dataset(
+    #     seed_candidate,
+    #     val_set,
+    #     llm_agent=LLM_AGENT,
+    #     seed=SEED,
+    # )
+    # print("\nEvaluating best optimized policy...")
+    # optimized_score = evaluate_on_dataset(
+    #     best_policy,
+    #     val_set,
+    #     llm_agent=LLM_AGENT,
+    #     seed=SEED,
+    # )
+    # print(f"\nBaseline pass@1:  {baseline_score:.2%}")
+    # print(f"Optimized pass@1:  {optimized_score:.2%}")
+    # print(f"Improvement:       {optimized_score - baseline_score:+.2%}")
 
 
 if __name__ == "__main__":
