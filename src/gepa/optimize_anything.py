@@ -129,6 +129,7 @@ from gepa.core.result import GEPAResult
 from gepa.core.state import EvaluationCache, FrontierType
 from gepa.image import Image  # noqa: F401 — re-exported for user convenience
 from gepa.logging.experiment_tracker import create_experiment_tracker
+from gepa.logging.logfire_integration import LogfireSpanCallback
 from gepa.logging.logger import Logger, LoggerProtocol, StdOutLogger
 from gepa.proposer.merge import MergeProposer
 from gepa.proposer.reflective_mutation.base import CandidateSelector, LanguageModel, ReflectionComponentSelector
@@ -1458,7 +1459,12 @@ def optimize_anything(
     if config.engine.cache_evaluation:
         evaluation_cache = EvaluationCache[Any, Any]()
 
-    # --- 14. Build the main engine from EngineConfig ---
+    # --- 14. Build callbacks (e.g. Logfire spans when use_logfire is True) ---
+    callbacks: list[Any] | None = None
+    if config.tracking.use_logfire:
+        callbacks = [LogfireSpanCallback()]
+
+    # --- 15. Build the main engine from EngineConfig ---
     engine = GEPAEngine(
         adapter=active_adapter,
         run_dir=config.engine.run_dir,
@@ -1478,9 +1484,10 @@ def optimize_anything(
         val_evaluation_policy=config.engine.val_evaluation_policy,
         use_cloudpickle=config.engine.use_cloudpickle,
         evaluation_cache=evaluation_cache,
+        callbacks=callbacks,
     )
 
-    # --- 15. Run optimization ---
+    # --- 16. Run optimization ---
     logger = config.tracking.logger
     with experiment_tracker:
         if isinstance(logger, Logger):

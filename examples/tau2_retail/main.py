@@ -86,14 +86,14 @@ def main():
             track_best_outputs=True,
             candidate_selection_strategy="pareto",
             display_progress_bar=True,
-            val_minibatch_size=4,
         ),
         reflection=ReflectionConfig(
             reflection_lm=REFLECTION_LM,
-            reflection_minibatch_size=4,
+            reflection_minibatch_size=2,
         ),
         tracking=TrackingConfig(
             use_wandb=True,
+            use_logfire=True,
         ),
     )
 

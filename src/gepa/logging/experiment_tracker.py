@@ -54,12 +54,24 @@ class ExperimentTracker:
             self._initialize_logfire()
 
     def _initialize_logfire(self):
-        """Initialize logfire."""
+        """Initialize logfire and call configure() so spans/logs are created."""
         try:
+            import os
+
             import logfire  # type: ignore
 
             if self.logfire_api_key:
+                os.environ.setdefault("LOGFIRE_TOKEN", self.logfire_api_key)
                 logfire.login(api_key=self.logfire_api_key)
+            # Required for spans/logs to be created; otherwise logfire no-ops with a warning.
+            opts: dict[str, Any] = {"scrubbing": False}
+            if self.logfire_run_name:
+                opts["service_name"] = self.logfire_run_name
+            logfire.configure(**opts)
+            # Trace LiteLLM calls in Logfire (requires logfire[litellm] or litellm installed).
+            instrument_litellm = getattr(logfire, "instrument_litellm", None)
+            if instrument_litellm is not None:
+                instrument_litellm()
         except ImportError:
             raise ImportError("logfire is not installed. Please install it or set backend='wandb' or 'mlflow' or 'none'.")
         except Exception as e:
@@ -274,6 +286,9 @@ def create_experiment_tracker(
     use_mlflow: bool = False,
     mlflow_tracking_uri: str | None = None,
     mlflow_experiment_name: str | None = None,
+    use_logfire: bool = False,
+    logfire_api_key: str | None = None,
+    logfire_run_name: str | None = None,
 ) -> ExperimentTracker:
     """
     Create an experiment tracker based on the specified backends.
@@ -281,10 +296,13 @@ def create_experiment_tracker(
     Args:
         use_wandb: Whether to use wandb
         use_mlflow: Whether to use mlflow
+        use_logfire: Whether to use logfire
         wandb_api_key: API key for wandb
         wandb_init_kwargs: Additional kwargs for wandb.init()
         mlflow_tracking_uri: Tracking URI for mlflow
         mlflow_experiment_name: Experiment name for mlflow
+        logfire_api_key: API key for logfire
+        logfire_run_name: Run name for logfire
 
     Returns:
         ExperimentTracker instance
@@ -299,4 +317,7 @@ def create_experiment_tracker(
         use_mlflow=use_mlflow,
         mlflow_tracking_uri=mlflow_tracking_uri,
         mlflow_experiment_name=mlflow_experiment_name,
+        use_logfire=use_logfire,
+        logfire_api_key=logfire_api_key,
+        logfire_run_name=logfire_run_name,
     )

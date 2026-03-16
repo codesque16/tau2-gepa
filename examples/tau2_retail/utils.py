@@ -93,9 +93,15 @@ def load_tau2_retail_dataset(
 
     train_ids = splits.get("train", [])
     test_ids = splits.get("test", [])
+    # Prefer specific task IDs for reproducibility; only use IDs present in test split.
+    # Split file uses string IDs (e.g. "12", "39").
+    preferred_val_ids = ["12", "39"]
+    val_task_ids = [tid for tid in preferred_val_ids if tid in test_ids]
+    if not val_task_ids:
+        val_task_ids = test_ids[:2] if len(test_ids) >= 2 else test_ids
 
     train_set = [TaskExample(task_id=tid) for tid in train_ids]
-    val_set = [TaskExample(task_id=tid) for tid in test_ids]
+    val_set = [TaskExample(task_id=tid) for tid in val_task_ids]
 
     return train_set, val_set
 

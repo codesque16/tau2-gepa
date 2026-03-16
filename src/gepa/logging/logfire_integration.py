@@ -27,8 +27,11 @@ from gepa.core.callbacks import (
     ProposalEndEvent,
     ProposalStartEvent,
     ReflectiveDatasetBuiltEvent,
-    ValsetEvaluatedEvent,
     StateSavedEvent,
+    TrainingEndEvent,
+    TrainingStartEvent,
+    ValsetEvaluatedEvent,
+    ValsetEvaluationStartEvent,
     BudgetUpdatedEvent,
     ErrorEvent,
 )
@@ -74,11 +77,12 @@ class LogfireSpanCallback:
     # =========================================================================
 
     def on_optimization_start(self, event: OptimizationStartEvent) -> None:
-        self._push_span("On optimization start", **event)
+        run_dir = (event.get("config") or {}).get("run_dir") or ""
+        name = f"On optimization start ({run_dir})" if run_dir else "On optimization start"
+        self._push_span(name, **event)
 
     def on_optimization_end(self, event: OptimizationEndEvent) -> None:
         self._pop_span()  # optimization
-
 
     # =========================================================================
     # Iteration Lifecycle
@@ -88,6 +92,7 @@ class LogfireSpanCallback:
         self._push_span(f"On iteration start: {event['iteration']}", **event)
 
     def on_iteration_end(self, event: IterationEndEvent) -> None:
+        self._pop_span()  # iteration start
         self._push_span(f"On iteration end: {event['iteration']}", **event)
         self._pop_span()
 
@@ -97,12 +102,14 @@ class LogfireSpanCallback:
     # =========================================================================
 
     def on_candidate_selected(self, event: CandidateSelectedEvent) -> None:
-        """Called when a candidate is selected for mutation."""
+        """Push and pop so span is a leaf (stack stays correct for training_end)."""
         self._push_span(f"On candidate selected: [{event['iteration']}][{event['candidate_idx']}]({event['score']:.2f})", **event)
+        self._pop_span()
 
     def on_minibatch_sampled(self, event: MinibatchSampledEvent) -> None:
-        """Called when a training minibatch is sampled."""
+        """Push and pop so span is a leaf (otherwise training_end would pop wrong span)."""
         self._push_span(f"On minibatch sampled: [{event['iteration']}]({len(event['minibatch_ids'])}/{event['trainset_size']})", **event)
+        self._pop_span()
 
     # =========================================================================
     # Evaluation Events
@@ -113,89 +120,122 @@ class LogfireSpanCallback:
         self._push_span(f"On evaluation start: [{event['iteration']}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})", **event)
 
     def on_evaluation_end(self, event: EvaluationEndEvent) -> None:
-        """Called after evaluating a candidate."""
+        """Pop evaluation start, then push/pop so evaluation end is a leaf."""
+        self._pop_span()  # On evaluation start
         self._push_span(f"On evaluation end: [{event['iteration']}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})", **event)
+        self._pop_span()
 
     def on_evaluation_skipped(self, event: EvaluationSkippedEvent) -> None:
-        """Called when an evaluation is skipped or its results are not used."""
+        """Push and pop so span is a leaf."""
         self._push_span(f"On evaluation skipped: [{event['iteration']}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})", **event)
+        self._pop_span()
+
+    def on_valset_evaluation_start(self, event: ValsetEvaluationStartEvent) -> None:
+        """Push span so all valset task evals nest under it."""
+        label = "seed" if event.get("is_seed") else f"candidate {event.get('candidate_idx', -1)}"
+        n = event.get("valset_size")
+        suffix = f" [{n} examples]" if n is not None else ""
+        self._push_span(
+            f"On valset evaluation start: iter {event['iteration']} ({label}){suffix}", **event
+        )
 
     def on_valset_evaluated(self, event: ValsetEvaluatedEvent) -> None:
-        """Called after a candidate is evaluated on the validation set."""
-        self._push_span(f"On valset evaluated: [{event['iteration']}][{event['candidate_idx']}](is_best: {event['is_best_program']})", **event)
+        """Pop valset eval start, then push/pop valset evaluated (nothing nested under it)."""
+        self._pop_span()  # On valset evaluation start
+        self._push_span(
+            f"On valset evaluated: [{event['iteration']}][{event['candidate_idx']}][avg score: {event['average_score']:.2f}](is_best: {event['is_best_program']})",
+            **event,
+        )
+        self._pop_span()
 
     # =========================================================================
     # Reflection Events
     # =========================================================================
 
     def on_reflective_dataset_built(self, event: ReflectiveDatasetBuiltEvent) -> None:
-        """Called after building the reflective dataset."""
+        """Push and pop so span is a leaf (stage: dataset for reflection)."""
         self._push_span(f"On reflective dataset built: [{event['iteration']}][{event['candidate_idx']}]", **event)
+        self._pop_span()
 
     def on_proposal_start(self, event: ProposalStartEvent) -> None:
-        """Called before proposing new instructions."""
-        self._push_span(f"On proposal start: [{event['iteration']}](parent: {event['parent_candidate']})", **event)
+        """Reflection phase: LLM proposes new candidate. Push so reflection/completion nests under it."""
+        self._push_span(f"On reflection (proposal start): [{event['iteration']}](parent: {event['parent_candidate']})", **event)
 
     def on_proposal_end(self, event: ProposalEndEvent) -> None:
-        """Called after proposing new instructions."""
+        """Pop reflection span, then push/pop proposal end so nothing nests under it."""
+        self._pop_span()  # On reflection (proposal start)
         self._push_span(f"On proposal end: [{event['iteration']}]", **event)
+        self._pop_span()
 
     # =========================================================================
     # Acceptance/Rejection Events
     # =========================================================================
 
     def on_candidate_accepted(self, event: CandidateAcceptedEvent) -> None:
-        """Called when a new candidate is accepted."""
+        """Push and pop so span is a leaf (no spurious nesting)."""
         self._push_span(f"On candidate accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}](new_score: {event['new_score']:.2f})", **event)
+        self._pop_span()
 
     def on_candidate_rejected(self, event: CandidateRejectedEvent) -> None:
-        """Called when a candidate is rejected."""
+        """Push and pop so span is a leaf (not nested under budget updated)."""
         self._push_span(f"On candidate rejected: [{event['iteration']}][old_score: {event['old_score']:.2f}](new_score: {event['new_score']:.2f})", **event)
+        self._pop_span()
 
     # =========================================================================
     # Merge Events
     # =========================================================================
 
     def on_merge_attempted(self, event: MergeAttemptedEvent) -> None:
-        """Called when a merge is attempted."""
+        """Push and pop so span is a leaf."""
         self._push_span(f"On merge attempted: [{event['iteration']}]", **event)
+        self._pop_span()
 
     def on_merge_accepted(self, event: MergeAcceptedEvent) -> None:
-        """Called when a merge is accepted."""
+        """Push and pop so span is a leaf."""
         self._push_span(f"On merge accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}]", **event)
+        self._pop_span()
 
     def on_merge_rejected(self, event: MergeRejectedEvent) -> None:
-        """Called when a merge is rejected."""
+        """Push and pop so span is a leaf."""
         self._push_span(f"On merge rejected: [{event['iteration']}]", **event)
+        self._pop_span()
 
     # =========================================================================
     # State Events
     # =========================================================================
 
     def on_pareto_front_updated(self, event: ParetoFrontUpdatedEvent) -> None:
-        """Called when the Pareto front is updated."""
+        """Push and pop so span is a leaf."""
         self._push_span(f"On pareto front updated: [{event['iteration']}])", **event)
+        self._pop_span()
 
     def on_state_saved(self, event: StateSavedEvent) -> None:
-        """Called after state is saved to disk."""
+        """Push and pop so span is nested under parent with no children."""
         self._push_span(f"On state saved: [{event['iteration']}][{event['run_dir']}]", **event)
+        self._pop_span()
+
+    def on_training_start(self, event: TrainingStartEvent) -> None:
+        """Training/proposal phase of iteration."""
+        self._push_span(f"On training start: {event['iteration']}", **event)
+
+    def on_training_end(self, event: TrainingEndEvent) -> None:
+        """End of training/proposal phase."""
+        self._pop_span()
 
     # =========================================================================
     # Budget Tracking
     # =========================================================================
 
     def on_budget_updated(self, event: BudgetUpdatedEvent) -> None:
-        """Called when the evaluation budget is updated."""
+        """Push and pop so budget update is a leaf (completion/candidate_rejected don't nest under it)."""
         self._push_span(f"On budget updated: [{event['iteration']}][{event['metric_calls_used']}/{event['metric_calls_remaining']}]", **event)
+        self._pop_span()
 
     # =========================================================================
     # Error Handling
     # =========================================================================
 
     def on_error(self, event: ErrorEvent) -> None:
-        """Called when an error occurs during optimization."""
+        """Push and pop so span is a leaf."""
         self._push_span(f"On error: [{event['iteration']}][{event['exception']}]", **event)
-
-    def on_valset_evaluated(self, event: ValsetEvaluatedEvent) -> None:
-        # Val eval span is created in the engine before _evaluate_on_valset
-        self._push_span(f"On valset evaluated: [{event['iteration']}][{event['candidate_idx']}][avg score: {event['average_score']:.2f}](is_best: {event['is_best_program']})", **event)
+        self._pop_span()

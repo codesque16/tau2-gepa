@@ -21,7 +21,10 @@ from gepa.core.callbacks import (
     OptimizationStartEvent,
     ParetoFrontUpdatedEvent,
     StateSavedEvent,
+    TrainingEndEvent,
+    TrainingStartEvent,
     ValsetEvaluatedEvent,
+    ValsetEvaluationStartEvent,
     notify_callbacks,
 )
 from gepa.core.data_loader import DataId, DataLoader, ensure_loader
@@ -125,10 +128,21 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         self,
         program: dict[str, str],
         state: GEPAState[RolloutOutput, DataId],
+        candidate_idx: int = -1,
     ) -> ValsetEvaluation[RolloutOutput, DataId]:
         valset = self.valset
         assert valset is not None
 
+        notify_callbacks(
+            self.callbacks,
+            "on_valset_evaluation_start",
+            ValsetEvaluationStartEvent(
+                iteration=state.i + 1,
+                is_seed=False,
+                candidate_idx=candidate_idx,
+                valset_size=len(valset),
+            ),
+        )
         val_ids = self.val_evaluation_policy.get_eval_batch(valset, state)
 
         outputs_by_val_idx, scores_by_val_idx, objective_by_val_idx, num_actual_evals = state.cached_evaluate_full(
@@ -311,10 +325,19 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     "perfect_score": self.perfect_score,
                     "seed": self.seed,
                     "track_best_outputs": self.track_best_outputs,
+                    "run_dir": self.run_dir,
                 },
             ),
         )
 
+        # Notify callbacks before valset eval so task runs nest under this span
+        notify_callbacks(
+            self.callbacks,
+            "on_valset_evaluation_start",
+            ValsetEvaluationStartEvent(
+                iteration=0, is_seed=True, candidate_idx=0, valset_size=len(valset)
+            ),
+        )
         # Evaluate seed candidate on valset (after on_optimization_start callback)
         seed_valset_evaluation = valset_evaluator(self.seed_candidate)
 
@@ -447,6 +470,13 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                 )
                 iteration_started = True
 
+                # Notify training phase start (proposal/merge phase)
+                notify_callbacks(
+                    self.callbacks,
+                    "on_training_start",
+                    TrainingStartEvent(iteration=state.i + 1),
+                )
+
                 # 1) Attempt merge first if scheduled and last iter found new program
                 if self.merge_proposer is not None and self.merge_proposer.use_merge:
                     if self.merge_proposer.merges_due > 0 and self.merge_proposer.last_iter_found_new_program:
@@ -473,6 +503,11 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
 
                             if new_sum >= max(parent_sums):
                                 # ACCEPTED: consume one merge attempt and record it
+                                notify_callbacks(
+                                    self.callbacks,
+                                    "on_training_end",
+                                    TrainingEndEvent(iteration=state.i + 1),
+                                )
                                 new_idx, _ = self._run_full_eval_and_add(
                                     new_program=proposal.candidate,
                                     state=state,
@@ -519,6 +554,11 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                                         reason=f"Merged score {new_sum} worse than both parents {parent_sums}",
                                     ),
                                 )
+                                notify_callbacks(
+                                    self.callbacks,
+                                    "on_training_end",
+                                    TrainingEndEvent(iteration=state.i + 1),
+                                )
                                 # Skip reflective this iteration (old behavior)
                                 continue
 
@@ -526,8 +566,31 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     self.merge_proposer.last_iter_found_new_program = False
 
                 # 2) Reflective mutation proposer
+                notify_callbacks(
+                    self.callbacks,
+                    "on_proposal_start",
+                    {
+                        "iteration": state.i + 1,
+                        "parent_candidate": state.program_candidates[0] if state.program_candidates else {},
+                        "components": [],
+                        "reflective_dataset": {},
+                    },
+                )
                 proposal = self.reflective_proposer.propose(state)
                 if proposal is None:
+                    notify_callbacks(
+                        self.callbacks,
+                        "on_proposal_end",
+                        {
+                            "iteration": state.i + 1,
+                            "new_instructions": {},
+                        },
+                    )
+                    notify_callbacks(
+                        self.callbacks,
+                        "on_training_end",
+                        TrainingEndEvent(iteration=state.i + 1),
+                    )
                     self.logger.log(f"Iteration {state.i + 1}: Reflective mutation did not propose a new candidate")
                     continue
 
@@ -549,6 +612,19 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                             reason=f"New subsample score {new_sum} not better than old score {old_sum}",
                         ),
                     )
+                    notify_callbacks(
+                        self.callbacks,
+                        "on_proposal_end",
+                        {
+                            "iteration": state.i + 1,
+                            "new_instructions": proposal.candidate,
+                        },
+                    )
+                    notify_callbacks(
+                        self.callbacks,
+                        "on_training_end",
+                        TrainingEndEvent(iteration=state.i + 1),
+                    )
                     continue
                 else:
                     self.logger.log(
@@ -556,6 +632,19 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     )
 
                 # Accept: full eval + add
+                notify_callbacks(
+                    self.callbacks,
+                    "on_proposal_end",
+                    {
+                        "iteration": state.i + 1,
+                        "new_instructions": proposal.candidate,
+                    },
+                )
+                notify_callbacks(
+                    self.callbacks,
+                    "on_training_end",
+                    TrainingEndEvent(iteration=state.i + 1),
+                )
                 new_idx, _ = self._run_full_eval_and_add(
                     new_program=proposal.candidate,
                     state=state,

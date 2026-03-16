@@ -208,6 +208,15 @@ class ParetoFrontUpdatedEvent(TypedDict):
     displaced_candidates: list[int]
 
 
+class ValsetEvaluationStartEvent(TypedDict):
+    """Event for on_valset_evaluation_start callback (before valset eval runs)."""
+
+    iteration: int
+    is_seed: bool
+    candidate_idx: int  # 0 for seed, or program index when known
+    valset_size: int  # number of val examples to evaluate (for trace clarity)
+
+
 class ValsetEvaluatedEvent(TypedDict):
     """Event for on_valset_evaluated callback."""
 
@@ -221,6 +230,18 @@ class ValsetEvaluatedEvent(TypedDict):
     parent_ids: Sequence[ProgramIdx]
     is_best_program: bool
     outputs_by_val_id: dict[Any, Any] | None
+
+
+class TrainingStartEvent(TypedDict):
+    """Event for on_training_start callback (training/minibatch phase of iteration)."""
+
+    iteration: int
+
+
+class TrainingEndEvent(TypedDict):
+    """Event for on_training_end callback."""
+
+    iteration: int
 
 
 class StateSavedEvent(TypedDict):
@@ -307,8 +328,20 @@ class GEPACallback(Protocol):
         """Called when an evaluation is skipped or its results are not used."""
         ...
 
+    def on_valset_evaluation_start(self, event: ValsetEvaluationStartEvent) -> None:
+        """Called before valset evaluation runs (so task evals nest under this span)."""
+        ...
+
     def on_valset_evaluated(self, event: ValsetEvaluatedEvent) -> None:
         """Called after a candidate is evaluated on the validation set."""
+        ...
+
+    def on_training_start(self, event: TrainingStartEvent) -> None:
+        """Called at the start of the training/proposal phase of an iteration."""
+        ...
+
+    def on_training_end(self, event: TrainingEndEvent) -> None:
+        """Called at the end of the training/proposal phase of an iteration."""
         ...
 
     # =========================================================================

@@ -68,9 +68,27 @@ gskill = [
     "pyyaml",
 ]
 
+tau2 = [
+    "gepa[full]",
+    "tau2>=0.2.1",
+]
+# Logfire observability (spans, LiteLLM tracing). Used when TrackingConfig.use_logfire=True.
+logfire = [
+    "logfire[litellm]",
+]
+
+[tool.uv.sources]
+# tau2 from local path (sibling layout: gepa and tau2-mermaid under same parent)
+# For custom layouts: symlink or use `uv pip install -e $TAU2_BENCH_PATH` after sync
+tau2 = { path = "../tau2-bench" }
+
 [project.urls]
 "Homepage" = "https://github.com/gepa-ai/gepa"
 "Bug Tracker" = "https://github.com/gepa-ai/gepa/issues"
+
+[tool.logfire]
+# Disable scrubbing so prompts, candidates, and API payloads are visible in spans.
+scrubbing = false
 
 [tool.setuptools.packages.find]
 where = ["src"]
