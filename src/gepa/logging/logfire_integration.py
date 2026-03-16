@@ -91,7 +91,9 @@ class LogfireSpanCallback:
     # =========================================================================
 
     def on_iteration_start(self, event: IterationStartEvent) -> None:
-        self._push_span(f"On iteration start: {event['iteration']}", **event)
+        # Drop raw GEPAState object from span attributes; keep only serializable fields.
+        event_no_state = {k: v for k, v in event.items() if k != "state"}
+        self._push_span(f"On iteration start: {event['iteration']}", **event_no_state)
 
     def on_iteration_end(self, event: IterationEndEvent) -> None:
         self._pop_span()  # iteration start
@@ -101,9 +103,10 @@ class LogfireSpanCallback:
         extra = ""
         if best is not None and score is not None and pareto_agg is not None:
             extra = f" best_prog={best} best_score={score:.2f} pareto_agg={pareto_agg:.2f}"
+        event_no_state = {k: v for k, v in event.items() if k != "state"}
         self._push_span(
             f"On iteration end: {event['iteration']}{extra}",
-            **event,
+            **event_no_state,
         )
         self._pop_span()
 

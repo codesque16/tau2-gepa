@@ -228,6 +228,9 @@ class ParetoFrontUpdatedEvent(TypedDict):
     iteration: int
     new_front: list[int]
     displaced_candidates: list[int]
+    # Optional: per-candidate text and short hashes to make Logfire traces easier to read.
+    candidates: dict[int, dict[str, str]] | None
+    candidate_hashes: dict[int, str] | None
 
 
 class ValsetEvaluationStartEvent(TypedDict):

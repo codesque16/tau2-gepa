@@ -196,6 +196,18 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         new_front = sorted(candidates_after)
         displaced_candidates = sorted(candidates_before - candidates_after)
 
+        # Build candidate text + hashes so Logfire can show which programs are on the frontier.
+        candidates_payload: dict[int, dict[str, str]] = {}
+        candidate_hashes: dict[int, str] = {}
+        for idx in new_front:
+            cand = state.candidates[idx]
+            candidates_payload[idx] = cand
+            # Use stable hash over concatenated candidate values
+            import hashlib
+
+            joined = "\n\n".join(f"{k}:\n{v}" for k, v in sorted(cand.items()))
+            candidate_hashes[idx] = hashlib.sha256(joined.encode("utf-8")).hexdigest()[:12]
+
         notify_callbacks(
             self.callbacks,
             "on_pareto_front_updated",
@@ -203,6 +215,8 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                 iteration=state.i + 1,
                 new_front=new_front,
                 displaced_candidates=displaced_candidates,
+                candidates=candidates_payload,
+                candidate_hashes=candidate_hashes,
             ),
         )
 
