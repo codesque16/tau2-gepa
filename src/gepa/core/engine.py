@@ -200,7 +200,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         candidates_payload: dict[int, dict[str, str]] = {}
         candidate_hashes: dict[int, str] = {}
         for idx in new_front:
-            cand = state.candidates[idx]
+            cand = state.program_candidates[idx]
             candidates_payload[idx] = cand
             # Use stable hash over concatenated candidate values
             import hashlib

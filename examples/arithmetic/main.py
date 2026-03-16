@@ -13,6 +13,7 @@ Usage:
 import argparse
 import os
 from datetime import datetime
+import hashlib
 
 from examples.arithmetic.data import get_train_val
 from examples.arithmetic.evaluate import evaluate_one
@@ -59,7 +60,21 @@ def main() -> None:
     print(f"Run dir: {log_dir}")
 
     def evaluator(candidate: str, example) -> tuple[float, SideInfo]:
-        return evaluate_one(candidate, example, model=EVAL_MODEL)
+        """Evaluate one arithmetic problem with logging-friendly candidate hash."""
+        cand_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:12]
+        try:
+            import logfire
+        except ImportError:
+            score, side = evaluate_one(candidate, example, model=EVAL_MODEL)
+            side.setdefault("candidate_sha256_12", cand_hash)
+            return score, side
+
+        # Include hash in span name for quick visual identification in Logfire.
+        span_name = f"gepa_eval_arith cand={cand_hash}"
+        with logfire.span(span_name, candidate_sha256_12=cand_hash):
+            score, side = evaluate_one(candidate, example, model=EVAL_MODEL)
+            side.setdefault("candidate_sha256_12", cand_hash)
+            return score, side
 
     config = GEPAConfig(
         engine=EngineConfig(

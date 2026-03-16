@@ -178,7 +178,14 @@ class LogfireSpanCallback:
 
     def on_proposal_start(self, event: ProposalStartEvent) -> None:
         """Reflection phase: LLM proposes new candidate. Push so reflection/completion nests under it."""
-        parent_text = event.get("parent_candidate") or ""
+        raw_parent = event.get("parent_candidate")
+        # parent_candidate may be a string (tau2) or a dict (optimize_anything generic).
+        if isinstance(raw_parent, dict):
+            parent_text = "\n\n".join(str(v) for k, v in sorted(raw_parent.items()))
+        elif isinstance(raw_parent, str) or raw_parent is None:
+            parent_text = raw_parent or ""
+        else:
+            parent_text = str(raw_parent)
         parent_hash = hashlib.sha256(parent_text.encode("utf-8")).hexdigest()[:12] if parent_text else ""
         name_suffix = f"(parent_hash: {parent_hash})" if parent_hash else "(parent: <none>)"
         event_with_hash = dict(event)
@@ -201,11 +208,18 @@ class LogfireSpanCallback:
 
     def on_candidate_accepted(self, event: CandidateAcceptedEvent) -> None:
         """Push and pop so span is a leaf (no spurious nesting)."""
-        self._push_span(
-            f"On candidate accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}]"
-            f"(old_score: {event['old_score']:.2f} -> new_score: {event['new_score']:.2f})",
-            **event,
-        )
+        old = event.get("old_score")
+        if old is not None:
+            msg = (
+                f"On candidate accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}]"
+                f"(old_score: {old:.2f} -> new_score: {event['new_score']:.2f})"
+            )
+        else:
+            msg = (
+                f"On candidate accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}]"
+                f"(new_score: {event['new_score']:.2f})"
+            )
+        self._push_span(msg, **event)
         self._pop_span()
 
     def on_candidate_rejected(self, event: CandidateRejectedEvent) -> None:
