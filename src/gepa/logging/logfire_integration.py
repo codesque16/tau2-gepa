@@ -9,8 +9,8 @@ pareto sets with scores, reject/accept, and tree-based parent-child lineage.
 from typing import Any
 
 from gepa.core.callbacks import (
-    OptimizationStartEvent,
-    OptimizationEndEvent,
+    BudgetExhaustedEvent,
+    BudgetUpdatedEvent,
     CandidateAcceptedEvent,
     CandidateRejectedEvent,
     CandidateSelectedEvent,
@@ -23,6 +23,8 @@ from gepa.core.callbacks import (
     MergeAcceptedEvent,
     MergeRejectedEvent,
     MinibatchSampledEvent,
+    OptimizationEndEvent,
+    OptimizationStartEvent,
     ParetoFrontUpdatedEvent,
     ProposalEndEvent,
     ProposalStartEvent,
@@ -32,7 +34,6 @@ from gepa.core.callbacks import (
     TrainingStartEvent,
     ValsetEvaluatedEvent,
     ValsetEvaluationStartEvent,
-    BudgetUpdatedEvent,
     ErrorEvent,
 )
 
@@ -93,7 +94,16 @@ class LogfireSpanCallback:
 
     def on_iteration_end(self, event: IterationEndEvent) -> None:
         self._pop_span()  # iteration start
-        self._push_span(f"On iteration end: {event['iteration']}", **event)
+        best = event.get("best_program_as_per_agg_score_valset")
+        score = event.get("best_score_on_valset")
+        pareto_agg = event.get("valset_pareto_front_agg")
+        extra = ""
+        if best is not None and score is not None and pareto_agg is not None:
+            extra = f" best_prog={best} best_score={score:.2f} pareto_agg={pareto_agg:.2f}"
+        self._push_span(
+            f"On iteration end: {event['iteration']}{extra}",
+            **event,
+        )
         self._pop_span()
 
 
@@ -103,7 +113,12 @@ class LogfireSpanCallback:
 
     def on_candidate_selected(self, event: CandidateSelectedEvent) -> None:
         """Push and pop so span is a leaf (stack stays correct for training_end)."""
-        self._push_span(f"On candidate selected: [{event['iteration']}][{event['candidate_idx']}]({event['score']:.2f})", **event)
+        dist = event.get("selection_distribution")
+        dist_str = f" probs={dist}" if dist else ""
+        self._push_span(
+            f"On candidate selected: [{event['iteration']}][{event['candidate_idx']}]({event['score']:.2f}){dist_str}",
+            **event,
+        )
         self._pop_span()
 
     def on_minibatch_sampled(self, event: MinibatchSampledEvent) -> None:
@@ -229,6 +244,35 @@ class LogfireSpanCallback:
     def on_budget_updated(self, event: BudgetUpdatedEvent) -> None:
         """Push and pop so budget update is a leaf (completion/candidate_rejected don't nest under it)."""
         self._push_span(f"On budget updated: [{event['iteration']}][{event['metric_calls_used']}/{event['metric_calls_remaining']}]", **event)
+        self._pop_span()
+
+    def on_budget_exhausted(self, event: BudgetExhaustedEvent) -> None:
+        """Log seed, best candidate, and all Pareto frontier programs with scores where they perform best."""
+        best_idx = event["best_candidate_idx"]
+        best_score = event["best_score_on_valset"]
+        pareto_ids = event["pareto_front_program_ids"]
+        per_prog = event["per_program_best_val_scores"]
+        # Human-readable summary: for each program on frontier, count and mean score where it's best
+        summary_parts = [
+            f"best_candidate_idx={best_idx} best_score={best_score:.2f}",
+            f"pareto_programs={pareto_ids}",
+        ]
+        for prog_idx in pareto_ids:
+            scores = per_prog.get(prog_idx, {})
+            n = len(scores)
+            avg = sum(scores.values()) / n if n else 0.0
+            summary_parts.append(f"P{prog_idx}: best_on_{n}_vals avg={avg:.2f}")
+        self._push_span(
+            "On budget exhausted: " + " | ".join(summary_parts),
+            seed_candidate=event["seed_candidate"],
+            best_candidate=event["best_candidate"],
+            best_candidate_idx=best_idx,
+            best_score_on_valset=best_score,
+            total_metric_calls=event["total_metric_calls"],
+            total_iterations=event["total_iterations"],
+            pareto_front_program_ids=pareto_ids,
+            per_program_best_val_scores=per_prog,
+        )
         self._pop_span()
 
     # =========================================================================

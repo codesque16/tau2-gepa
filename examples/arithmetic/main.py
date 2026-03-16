@@ -26,7 +26,7 @@ from gepa.optimize_anything import (
 )
 
 # Budget for 50 train + 50 val: enough for seed eval + proposal iterations
-MAX_METRIC_CALLS = 200
+MAX_METRIC_CALLS = 400
 REFLECTION_LM = "gemini/gemini-3-flash-preview"
 EVAL_MODEL = "gpt-4o-mini"
 

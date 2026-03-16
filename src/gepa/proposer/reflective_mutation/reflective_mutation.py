@@ -145,16 +145,24 @@ class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
             f"Iteration {i}: Selected program {curr_prog_id} score: {state.program_full_scores_val_set[curr_prog_id]}"
         )
 
+        # Probability distribution over candidate pool (for logging)
+        selection_distribution = getattr(
+            self.candidate_selector, "get_selection_distribution", lambda s: {}
+        )(state)
+
         # Notify candidate selected
+        event_payload: CandidateSelectedEvent = {
+            "iteration": i,
+            "candidate_idx": curr_prog_id,
+            "candidate": curr_prog,
+            "score": state.program_full_scores_val_set[curr_prog_id],
+        }
+        if selection_distribution:
+            event_payload["selection_distribution"] = selection_distribution
         notify_callbacks(
             self.callbacks,
             "on_candidate_selected",
-            CandidateSelectedEvent(
-                iteration=i,
-                candidate_idx=curr_prog_id,
-                candidate=curr_prog,
-                score=state.program_full_scores_val_set[curr_prog_id],
-            ),
+            event_payload,
         )
 
         self.experiment_tracker.log_metrics(

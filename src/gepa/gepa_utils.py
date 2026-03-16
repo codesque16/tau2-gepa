@@ -87,6 +87,29 @@ def find_dominator_programs(pareto_front_programs, train_val_weighted_agg_scores
     return list(uniq_progs)
 
 
+def get_pareto_selection_distribution(
+    pareto_front_programs: Mapping[Any, set[int]],
+    train_val_weighted_agg_scores_for_all_programs: list[float],
+) -> dict[int, float]:
+    """Return probability mass over candidate indices for Pareto selection (before sampling)."""
+    new_program_at_pareto_front_valset = remove_dominated_programs(
+        pareto_front_programs, scores=train_val_weighted_agg_scores_for_all_programs
+    )
+    program_frequency_in_validation_pareto_front: dict[int, int] = {}
+    for testcase_pareto_front in new_program_at_pareto_front_valset.values():
+        for prog_idx in testcase_pareto_front:
+            program_frequency_in_validation_pareto_front[prog_idx] = (
+                program_frequency_in_validation_pareto_front.get(prog_idx, 0) + 1
+            )
+    total = sum(program_frequency_in_validation_pareto_front.values())
+    if total == 0:
+        return {}
+    return {
+        prog_idx: freq / total
+        for prog_idx, freq in program_frequency_in_validation_pareto_front.items()
+    }
+
+
 def select_program_candidate_from_pareto_front(
     pareto_front_programs: Mapping[Any, set[int]],
     train_val_weighted_agg_scores_for_all_programs: list[float],

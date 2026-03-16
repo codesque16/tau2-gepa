@@ -7,6 +7,7 @@ from typing import Any, Generic
 
 from gepa.core.adapter import DataInst, GEPAAdapter, RolloutOutput, Trajectory
 from gepa.core.callbacks import (
+    BudgetExhaustedEvent,
     BudgetUpdatedEvent,
     CandidateAcceptedEvent,
     CandidateRejectedEvent,
@@ -691,6 +692,28 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                 # Notify iteration end only if the iteration actually started
                 # (i.e., on_iteration_start was called successfully)
                 if iteration_started:
+                    best_idx = self.val_evaluation_policy.get_best_program(state)
+                    best_score = self.val_evaluation_policy.get_valset_score(best_idx, state)
+                    pareto_scores = list(state.pareto_front_valset.values())
+                    pareto_agg = (
+                        sum(pareto_scores) / len(pareto_scores)
+                        if pareto_scores
+                        else 0.0
+                    )
+                    iter_end_metrics = {
+                        "best_program_as_per_agg_score_valset": best_idx,
+                        "linear_pareto_front_program_idx": best_idx,
+                        "valset_pareto_front_agg": pareto_agg,
+                        "best_score_on_valset": best_score,
+                    }
+                    self.experiment_tracker.log_metrics(
+                        {
+                            "iteration": state.i + 1,
+                            "total_metric_calls": state.total_num_evals,
+                            **iter_end_metrics,
+                        },
+                        step=state.i + 1,
+                    )
                     notify_callbacks(
                         self.callbacks,
                         "on_iteration_end",
@@ -698,6 +721,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                             iteration=state.i + 1,
                             state=state,
                             proposal_accepted=proposal_accepted,
+                            **iter_end_metrics,
                         ),
                     )
 
@@ -707,8 +731,43 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
 
         state.save(self.run_dir, use_cloudpickle=self.use_cloudpickle)
 
-        # Notify optimization end
         best_candidate_idx = self.val_evaluation_policy.get_best_program(state)
+        best_candidate = state.program_candidates[best_candidate_idx]
+        best_score = self.val_evaluation_policy.get_valset_score(best_candidate_idx, state)
+
+        # When budget is exhausted, notify so callbacks can log seed, best, and Pareto frontier
+        remaining = self._get_remaining_budget(state)
+        if remaining is not None and remaining == 0:
+            pareto_program_ids: set[int] = set()
+            for prog_set in state.program_at_pareto_front_valset.values():
+                pareto_program_ids.update(prog_set)
+            per_program_best_val_scores: dict[int, dict[DataId, float]] = {}
+            for prog_idx in pareto_program_ids:
+                scores_on_best: dict[DataId, float] = {}
+                for val_id, front in state.program_at_pareto_front_valset.items():
+                    if prog_idx in front:
+                        sc = state.prog_candidate_val_subscores[prog_idx].get(val_id)
+                        if sc is not None:
+                            scores_on_best[val_id] = sc
+                        elif val_id in state.pareto_front_valset:
+                            scores_on_best[val_id] = state.pareto_front_valset[val_id]
+                per_program_best_val_scores[prog_idx] = scores_on_best
+            notify_callbacks(
+                self.callbacks,
+                "on_budget_exhausted",
+                BudgetExhaustedEvent(
+                    seed_candidate=dict(self.seed_candidate),
+                    best_candidate=dict(best_candidate),
+                    best_candidate_idx=best_candidate_idx,
+                    best_score_on_valset=best_score,
+                    total_metric_calls=state.total_num_evals,
+                    total_iterations=state.i,
+                    pareto_front_program_ids=sorted(pareto_program_ids),
+                    per_program_best_val_scores=per_program_best_val_scores,
+                ),
+            )
+
+        # Notify optimization end
         notify_callbacks(
             self.callbacks,
             "on_optimization_end",
@@ -721,8 +780,6 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         )
 
         # Log final summary: seed candidate, best candidate, and all candidates table
-        best_candidate = state.program_candidates[best_candidate_idx]
-        best_score = self.val_evaluation_policy.get_valset_score(best_candidate_idx, state)
         summary: dict[str, Any] = {
             "best_candidate_idx": best_candidate_idx,
             "best_valset_score": best_score,

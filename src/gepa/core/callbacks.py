@@ -65,6 +65,23 @@ class OptimizationEndEvent(TypedDict):
     final_state: GEPAState
 
 
+class BudgetExhaustedEvent(TypedDict):
+    """Event for on_budget_exhausted callback (when metric budget runs out).
+
+    Logs seed, best candidate, and all programs on the Pareto frontier with
+    their scores on the val examples where they perform best.
+    """
+
+    seed_candidate: dict[str, str]
+    best_candidate: dict[str, str]
+    best_candidate_idx: int
+    best_score_on_valset: float
+    total_metric_calls: int
+    total_iterations: int
+    pareto_front_program_ids: list[int]
+    per_program_best_val_scores: dict[int, dict[Any, float]]
+
+
 class IterationStartEvent(TypedDict):
     """Event for on_iteration_start callback."""
 
@@ -72,21 +89,26 @@ class IterationStartEvent(TypedDict):
     state: GEPAState
 
 
-class IterationEndEvent(TypedDict):
+class IterationEndEvent(TypedDict, total=False):
     """Event for on_iteration_end callback."""
 
     iteration: int
     state: GEPAState
     proposal_accepted: bool
+    best_program_as_per_agg_score_valset: int
+    linear_pareto_front_program_idx: int
+    valset_pareto_front_agg: float
+    best_score_on_valset: float
 
 
-class CandidateSelectedEvent(TypedDict):
+class CandidateSelectedEvent(TypedDict, total=False):
     """Event for on_candidate_selected callback."""
 
     iteration: int
     candidate_idx: int
     candidate: dict[str, str]
     score: float
+    selection_distribution: dict[int, float]  # probability mass over candidate pool (for logging)
 
 
 class MinibatchSampledEvent(TypedDict):
@@ -408,6 +430,14 @@ class GEPACallback(Protocol):
         """Called when the evaluation budget is updated."""
         ...
 
+    def on_budget_exhausted(self, event: BudgetExhaustedEvent) -> None:
+        """Called when the metric budget is exhausted (run ended due to budget).
+
+        Event includes seed candidate, best candidate, and Pareto frontier
+        programs with their scores on val examples where they perform best.
+        """
+        ...
+
     # =========================================================================
     # Error Handling
     # =========================================================================
@@ -546,6 +576,9 @@ class CompositeCallback:
 
     def on_budget_updated(self, event: BudgetUpdatedEvent) -> None:
         self._notify("on_budget_updated", event)
+
+    def on_budget_exhausted(self, event: BudgetExhaustedEvent) -> None:
+        self._notify("on_budget_exhausted", event)
 
     def on_error(self, event: ErrorEvent) -> None:
         self._notify("on_error", event)
