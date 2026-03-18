@@ -38,7 +38,7 @@ def _apply_gepa_generated_template(template_text: str, generated_text: str) -> s
     """Substitute generated text into template at <gepa_generated>.
 
     Supported forms:
-    - Block form: <gepa_generated> ... </gepa_generated> (replaces the whole block, tags included)
+    - Block form: <gepa_generated> ... </gepa_generated> (replaces the whole block; wrapper tags removed)
     - Placeholder form: <gepa_generated> (each occurrence replaced)
     """
     if _GEPA_GENERATED_OPEN not in template_text:
@@ -48,7 +48,7 @@ def _apply_gepa_generated_template(template_text: str, generated_text: str) -> s
         pattern = re.compile(
             re.escape(_GEPA_GENERATED_OPEN) + r"[\s\S]*?" + re.escape(_GEPA_GENERATED_CLOSE)
         )
-        replacement = f"{_GEPA_GENERATED_OPEN}\n{generated_text.strip()}\n{_GEPA_GENERATED_CLOSE}"
+        replacement = generated_text.strip()
         return pattern.sub(replacement, template_text)
 
     # No closing tag found; treat as a plain placeholder token.
