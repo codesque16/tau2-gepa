@@ -21,16 +21,11 @@ except ImportError as e:
 # PROMPTS
 # =============================================================================
 
-BACKGROUND = """You are optimizing the retail agent policy (policy_solo.md) for a tau2 customer-service agent.
+BACKGROUND = """You are optimizing the agent policy for a retail customer-service agent.
 
-Tau2 retail domain:
-- The agent handles customer service tasks (returns, exchanges, order modifications, etc.)
-- Tasks are from retail_solo_comms: each task has communication requirements (communicate_info)
-- The agent must complete the task AND satisfy communication criteria to get full reward
-- Evaluation uses pass@1: fraction of tasks solved (reward >= 0.99)
-
-Your candidate is the full policy document. The policy defines domain rules, action rules, and constraints.
+Your candidate is the current full policy document. The policy defines domain rules, action rules, and constraints.
 The agent is given this policy as its domain knowledge; you are refining it for better task completion.
+The agent is given a ticket that contains the user's request annd is supposed to make all the required tool calls before finally replying to the user.
 
 Common failure modes:
 - Agent doesn't communicate required info to the user
@@ -39,9 +34,36 @@ Common failure modes:
 - Agent doesn't handle edge cases (e.g., partial refunds, exchange eligibility)
 - Policy rules are ambiguous or missing for edge cases
 
-Preserve the structure (markdown, sections) and improve clarity, completeness, and edge-case handling."""
+Preserve the structure (markdown, sections) and improve clarity, completeness, and edge-case handling.
 
-OBJECTIVE = """Maximize the pass@1 score (fraction of retail tasks solved) on the tau2 benchmark."""
+==== EDITING BOUNDARIES (CRITICAL) ====
+- The policy has multiple sections, but you are ONLY allowed to modify:
+  - `## Domain basic`
+  - `## SOP Node Policies`
+  - `## SOP Flowchart`
+- Do NOT add, remove, or rename any other sections.
+- Keep the same headings and overall structure; only rewrite content inside these three sections.
+
+==== GUIDELINES FOR WHAT GOES WHERE ====
+- Convert procedural instructions (if/then logic, decision trees, multi-step workflows) into the **SOP Flowchart**.
+- Keep as prose anything that is global context, tone guidance, or does not map naturally to a flow.
+- Do not over-decompose: one node can represent a meaningful chunk of work, not a single micro-action.
+
+==== NODE POLICIES ====
+- `## SOP Node Policies` contains per-node policies and tool_hints.
+- Each node entry:
+  - May define `tool_hints: [...]` listing tools.
+  - May add node-specific `policy:` text.
+- Use this section ONLY for node-specific rules and tool usage hints.
+
+==== SECTION ROLES ====
+- `## Domain basic` — pure domain reference (no if/then logic). If it has conditionals, move them into the `## SOP Flowchart`.
+- `## SOP Flowchart` — full mermaid graph with all node detail, annotations, and edge conditions. This is the source of truth that load_graph will parse.
+- `## SOP Node Policies` — node-level tools and policies.
+
+ALWAYS obey these boundaries: only change content within these three sections and follow the conventions above exactly."""
+
+OBJECTIVE = """Maximize the score for each task. Score is 1.0 or 0.0 depending on whether the run was a success or not"""
 
 # Train-only mode: maximize score on this fixed set of task IDs (no valset).
 TRAIN_ONLY_TASK_IDS = [
@@ -52,8 +74,7 @@ TRAIN_ONLY_TASK_IDS = [
 TRAIN_ONLY_TASK_IDS = [
     "12", "23", "32", "56", "66", "78"
 ]
-OBJECTIVE_TRAIN_ONLY = "Maximize the pass@1 score on the training set (no held-out valset)."
-
+OBJECTIVE_TRAIN_ONLY = "Maximize the score for each task. Score is 1.0 or 0.0 depending on whether the run was a success or not"
 
 def load_policy_solo_seed(split_path: Path | None = None) -> str:
     """Load policy_solo.md content as the seed candidate."""

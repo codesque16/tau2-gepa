@@ -22,34 +22,39 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-logger = logging.getLogger(__name__)
-
 from gepa.core.adapter import DataInst, EvaluationBatch, GEPAAdapter
 from gepa.proposer.reflective_mutation.base import LanguageModel
 
 if TYPE_CHECKING:
     from gepa.optimize_anything import Candidate, OptimizationState, RefinerConfig, SideInfo
 
+logger = logging.getLogger(__name__)
 
-REFINER_PROMPT_TEMPLATE = """You are refining a candidate to improve its performance.
 
-## Instructions
+REFINER_PROMPT_TEMPLATE = """You are an expert optimization assistant for tau2.
+
+<instructions>
 {refiner_prompt}
+</instructions>
 
-## Current Candidate (JSON)
-```json
+<current_policy>
 {candidate_to_improve}
-```
+</current_policy>
 
-## Evaluation History
-The following shows all evaluation attempts so far, including scores and feedback:
-```json
+<evaluation_history>
 {evaluation_feedback}
-```
+</evaluation_history>
 
-## Task
+<task>
 Analyze the evaluation history and propose an improved version of the candidate.
-Return ONLY a valid JSON object with the improved parameters (no explanation, no markdown fences).
+Return ONLY a single valid JSON object.
+</task>
+
+<output_format_rules>
+1. Output must be JSON only (no markdown fences, no surrounding text).
+2. The JSON object must be parseable by standard JSON parsers.
+3. Do not include explanations.
+</output_format_rules>
 """
 
 
@@ -302,13 +307,13 @@ class OptimizeAnythingAdapter(GEPAAdapter):
         refiner_prompt = candidate.get("refiner_prompt", "")
 
         # 1. Evaluate original candidate
-        original_score, original_output, original_side_info = self._call_evaluator(candidate, example)
+        original_score, _original_output, original_side_info = self._call_evaluator(candidate, example)
 
         # Update best evals with original evaluation
         self._update_best_example_evals(example, original_score, original_side_info)
 
         # 2. Refine and evaluate
-        best_refined_score, best_refined_candidate, best_refined_side_info, all_attempts = self._refine_and_evaluate(
+        best_refined_score, best_refined_candidate, _best_refined_side_info, all_attempts = self._refine_and_evaluate(
             candidate, example, refiner_prompt, original_score, original_side_info
         )
 
@@ -457,7 +462,7 @@ class OptimizeAnythingAdapter(GEPAAdapter):
 
                 # Reconstruct full candidate: refined params + original refiner_prompt
                 refined_candidate_dict = {**parsed_refined, "refiner_prompt": candidate.get("refiner_prompt", "")}
-                refined_score, refined_output, refined_eval_side_info = self._call_evaluator(
+                refined_score, _refined_output, refined_eval_side_info = self._call_evaluator(
                     refined_candidate_dict, example
                 )
 
@@ -498,12 +503,99 @@ class OptimizeAnythingAdapter(GEPAAdapter):
         return best_score, best_candidate, best_side_info, all_attempts
 
     def _format_all_attempts_feedback(self, all_attempts: list[dict]) -> str:
-        """Format all attempts (including original) into readable feedback for the refiner LLM.
+        """Format all attempts for the refiner LLM.
 
-        This provides the refiner with full history of optimization attempts,
-        allowing it to understand the progression and avoid repeating failed approaches.
+        For tau2 optimization we want a stable, human-readable text block instead of
+        raw JSON dumps (which makes it hard for the LLM/refiner to parse).
         """
-        return json.dumps(all_attempts, indent=2, default=str)
+
+        def _format_side_info(side_info: Any) -> str:
+            if not isinstance(side_info, Mapping):
+                return json.dumps(side_info, indent=2, default=str)
+
+            # tau2-specific keys we know about:
+            # - failed_task_ids, termination_reasons
+            # - per_task_traces
+            # - qualitative_asi
+            termination_reasons = side_info.get("termination_reasons", None)
+            qualitative_asi = side_info.get("qualitative_asi", None)
+            per_task_traces = side_info.get("per_task_traces", None)
+
+            # per_task_traces can be a JSON string or a dict.
+            parsed_per_task_traces: Any = per_task_traces
+            if isinstance(parsed_per_task_traces, str):
+                stripped = parsed_per_task_traces.strip()
+                if stripped.startswith("{") or stripped.startswith("["):
+                    try:
+                        parsed_per_task_traces = json.loads(parsed_per_task_traces)
+                    except json.JSONDecodeError:
+                        parsed_per_task_traces = per_task_traces
+
+            parts: list[str] = []
+
+            # Task description, reward info, conversation trace: only from per_task_traces.
+            # Keep it bounded; only show up to the first 1 trace to control prompt size.
+            shown = 0
+            if parsed_per_task_traces is not None and isinstance(parsed_per_task_traces, Mapping):
+                for _tid, trace in parsed_per_task_traces.items():
+                    if shown >= 1:
+                        break
+                    shown += 1
+                    if isinstance(trace, Mapping):
+                        parts.append("-> Task description:")
+                        parts.append(str(trace.get("task_description", "")))
+                        parts.append("-> Reward info:")
+                        parts.append(str(trace.get("reward_info", "")))
+                        parts.append("-> Conversation trace:")
+                        parts.append(str(trace.get("conversation", "")))
+                    else:
+                        parts.append("-> Task description:")
+                        parts.append(str(trace))
+
+            # Feedback: after the conversation trace, show what else GEPA provided.
+            if qualitative_asi is not None:
+                parts.append("-> Qualitative feedback:")
+                parts.append(str(qualitative_asi))
+            if termination_reasons is not None:
+                parts.append("-> Feedback (termination_reasons):")
+                parts.append(json.dumps(termination_reasons, indent=2, default=str))
+
+            return "\n".join(parts).strip()
+
+        # For each attempt we include a small summary. Then the refiner sees the
+        # full evaluation history in consistent tau2-flavored format.
+        blocks: list[str] = ["<evaluation_history>"]
+        # Add a single tools_list section (global) right after the opening tag.
+        # Many tau2 refiner prompts benefit from knowing the tool universe once,
+        # instead of repeating it per example.
+        first_side_info: Any = None
+        for attempt in all_attempts:
+            if isinstance(attempt, Mapping):
+                first_side_info = attempt.get("side_info")
+                break
+        if isinstance(first_side_info, Mapping) and first_side_info.get("tools_list") is not None:
+            blocks.append("-> Tools list:")
+            blocks.append(str(first_side_info.get("tools_list")))
+        for i, attempt in enumerate(all_attempts):
+            if not isinstance(attempt, Mapping):
+                blocks.append(f"---Attempt {i} (non-mapping)---\n{json.dumps(attempt, default=str)}")
+                continue
+
+            iteration = attempt.get("iteration", i)
+            score = attempt.get("score", None)
+            error = attempt.get("error", None)
+            side_info = attempt.get("side_info", None)
+
+            blocks.append(f"===Example {iteration}===========================")
+            if error:
+                blocks.append(f"-> Error: {error}")
+            else:
+                if score is not None:
+                    blocks.append(f"-> Score: {score}")
+                blocks.append(_format_side_info(side_info))
+
+        blocks.append("</evaluation_history>")
+        return "\n".join(blocks)
 
     def make_reflective_dataset(
         self,
@@ -523,7 +615,7 @@ class OptimizeAnythingAdapter(GEPAAdapter):
         ret: dict[str, list[dict[str, Any]]] = {}
         for component_name in components_to_update:
             ret[component_name] = []
-            for score, side_info in zip(scores, side_infos, strict=False):
+            for _score, side_info in zip(scores, side_infos, strict=False):
                 ret[component_name].append({})
                 for k, v in side_info.items():
                     if k == "scores":
