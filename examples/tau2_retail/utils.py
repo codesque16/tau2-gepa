@@ -8,7 +8,7 @@ from typing import Any
 # tau2 is an optional dependency: pip install -e /path/to/tau2-bench
 try:
     from gepa.logging.eval_context import get_gepa_eval_context
-    from tau2.gepa_eval import evaluate_for_gepa
+    from tau2.gepa_eval import _get_retail_available_tools_list, evaluate_for_gepa
     from tau2.utils.utils import DATA_DIR
 except ImportError as e:
     raise ImportError(
@@ -21,7 +21,8 @@ except ImportError as e:
 # PROMPTS
 # =============================================================================
 
-BACKGROUND = """You are optimizing the agent policy for a retail customer-service agent.
+BACKGROUND = (
+    """You are optimizing the agent policy for a retail customer-service agent.
 
 Your candidate is the current full policy document. The policy defines domain rules, action rules, and constraints.
 The agent is given this policy as its domain knowledge; you are refining it for better task completion.
@@ -61,7 +62,13 @@ Preserve the structure (markdown, sections) and improve clarity, completeness, a
 - `## SOP Flowchart` — full mermaid graph with all node detail, annotations, and edge conditions. This is the source of truth that load_graph will parse.
 - `## SOP Node Policies` — node-level tools and policies.
 
-ALWAYS obey these boundaries: only change content within these three sections and follow the conventions above exactly."""
+ALWAYS obey these boundaries: only change content within these three sections and follow the conventions above exactly.
+"""
+    + "\n## Retail agent tools (API)\n\n"
+    + "The following tools are available to the retail customer-service agent (solo agent; internal orchestration tools such as bash are not listed). "
+    + "Use this list when reasoning about capabilities and when writing `tool_hints` in node policies — only reference tool names that appear here.\n\n"
+    + _get_retail_available_tools_list()
+)
 
 OBJECTIVE = """Maximize the score for each task. Score is 1.0 or 0.0 depending on whether the run was a success or not"""
 
