@@ -48,6 +48,10 @@ TRAIN_ONLY_TASK_IDS = [
     "12", "17", "23", "27", "32", "33", "34", "45", "42", "43",
     "56", "57", "66", "68", "78", "73", "86", "81", "91", "113", "102", "103",
 ]
+# Train-only mode: maximize score on this fixed set of task IDs (no valset).
+TRAIN_ONLY_TASK_IDS = [
+    "12", "23", "32", "56", "66", "78"
+]
 OBJECTIVE_TRAIN_ONLY = "Maximize the pass@1 score on the training set (no held-out valset)."
 
 
