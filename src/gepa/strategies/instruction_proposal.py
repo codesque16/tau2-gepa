@@ -94,13 +94,80 @@ Provide the new instructions within ``` blocks."""
             text = "\n\n".join(convert_sample_to_markdown(sample, i + 1) for i, sample in enumerate(samples))
             return text, collected_images
 
+        def format_samples_tau(samples: Sequence[Mapping[str, Any]]) -> tuple[str, list[Image]]:
+            """Tau2-specific formatting for GEPA samples.
+
+            - hide noisy fields like `tools_list` and `failed_task_ids` if present
+            - keep stable, easy-to-scan separators
+            - dump dict/list values as JSON text
+            """
+            collected_images: list[Image] = []
+
+            def render_value(value: Any) -> str:
+                if isinstance(value, Image):
+                    collected_images.append(value)
+                    return f"[IMAGE-{len(collected_images)} — see visual content]\n\n"
+                if isinstance(value, (dict, list, tuple)):
+                    try:
+                        return (
+                            json.dumps(
+                                value,
+                                indent=2,
+                                sort_keys=True,
+                                ensure_ascii=False,
+                            ).strip()
+                            + "\n\n"
+                        )
+                    except Exception:
+                        return f"{str(value).strip()}\n\n"
+                return f"{str(value).strip()}\n\n"
+
+            # Only render the keys we care about for tau2 policy optimization.
+            # Keep formatting stable and parse-friendly for the refiner/proposal LM.
+            allowed_keys = {
+                "task_description",
+                "score",
+                "reward_info",
+                "conversation",
+                "qualitative_asi",
+            }
+
+            def key_to_label(key: str) -> str:
+                # tau2 field -> desired human-readable label
+                if key == "task_description":
+                    return "Task description"
+                if key == "score":
+                    return "Score"
+                if key == "reward_info":
+                    return "Reward info"
+                if key == "conversation":
+                    return "Conversation trace"
+                if key == "qualitative_asi":
+                    return "Qualitative feedback"
+                return key
+
+            def convert_sample_to_markdown_tau(sample: Mapping[str, Any], examplenum: int) -> str:
+                s = f"======= Example {examplenum} ==========\n"
+                for key, val in sample.items():
+                    if key not in allowed_keys:
+                        continue
+                    s += f"## {key_to_label(key)}\n"
+                    s += render_value(val)
+                return s
+
+            text = "\n\n".join(
+                convert_sample_to_markdown_tau(sample, i + 1) for i, sample in enumerate(samples)
+            )
+            return text, collected_images
+
         prompt_template = input_dict.get("prompt_template")
         if prompt_template is None:
             prompt_template = cls.default_prompt_template
 
         cls.validate_prompt_template(prompt_template)
 
-        formatted_text, images = format_samples(dataset)
+        print(dataset)
+        formatted_text, images = format_samples_tau(dataset)
 
         if images:
             formatted_text = (

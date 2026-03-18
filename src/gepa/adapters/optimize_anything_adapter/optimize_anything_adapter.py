@@ -586,7 +586,7 @@ class OptimizeAnythingAdapter(GEPAAdapter):
             error = attempt.get("error", None)
             side_info = attempt.get("side_info", None)
 
-            blocks.append(f"===Example {iteration}===========================")
+            blocks.append(f"======= Example {iteration} ==========")
             if error:
                 blocks.append(f"-> Error: {error}")
             else:
