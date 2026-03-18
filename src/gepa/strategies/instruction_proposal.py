@@ -131,6 +131,9 @@ Provide the new instructions within ``` blocks."""
                 "score",
                 "qualitative_asi",
                 "per_task_traces",
+                # Some tau2 feedbacks may provide these as top-level fields.
+                "reward_info",
+                "conversation",
             }
 
             def key_to_label(key: str) -> str:
@@ -141,6 +144,10 @@ Provide the new instructions within ``` blocks."""
                     return "Score"
                 if key == "qualitative_asi":
                     return "Qualitative feedback"
+                if key == "reward_info":
+                    return "Reward info"
+                if key == "conversation":
+                    return "Conversation trace"
                 if key == "per_task_traces":
                     return "Per-task traces"
                 return key
@@ -155,14 +162,39 @@ Provide the new instructions within ``` blocks."""
                     if key == "per_task_traces":
                         parsed = val
                         if isinstance(parsed, str):
+                            print(
+                                f"[format_samples_tau] per_task_traces is str; attempting json.loads() (len={len(parsed)})",
+                                flush=True,
+                            )
                             try:
                                 parsed = json.loads(parsed)
                             except json.JSONDecodeError:
+                                print(
+                                    "[format_samples_tau] per_task_traces json.loads() failed; keeping raw string",
+                                    flush=True,
+                                )
                                 parsed = val
                         if isinstance(parsed, Mapping) and parsed:
                             first_tid = next(iter(parsed.keys()))
                             trace = parsed.get(first_tid, {})
                             if isinstance(trace, Mapping):
+                                print(
+                                    "[format_samples_tau] parsed per_task_traces mapping OK",
+                                    flush=True,
+                                )
+                                print(
+                                    f"[format_samples_tau] first_tid={first_tid} trace_keys={list(trace.keys())}",
+                                    flush=True,
+                                )
+                                print(
+                                    "[format_samples_tau] has task_description/reward_info/conversation:",
+                                    {
+                                        "task_description": trace.get("task_description") is not None,
+                                        "reward_info": trace.get("reward_info") is not None,
+                                        "conversation": trace.get("conversation") is not None,
+                                    },
+                                    flush=True,
+                                )
                                 if trace.get("task_description") is not None:
                                     s += "## Task description\n"
                                     s += render_value(trace.get("task_description"))
