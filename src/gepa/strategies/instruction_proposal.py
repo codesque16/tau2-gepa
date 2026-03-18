@@ -1,6 +1,7 @@
 # Copyright (c) 2025 Lakshya A Agrawal and the GEPA contributors
 # https://github.com/gepa-ai/gepa
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar
@@ -65,22 +66,21 @@ Provide the new instructions within ``` blocks."""
                 if isinstance(value, Image):
                     collected_images.append(value)
                     return f"[IMAGE-{len(collected_images)} — see visual content]\n\n"
-                elif isinstance(value, dict):
-                    s = ""
-                    for k, v in value.items():
-                        s += f"{'#' * level} {k}\n"
-                        s += render_value(v, min(level + 1, 6))
-                    if not value:
-                        s += "\n"
-                    return s
-                elif isinstance(value, list | tuple):
-                    s = ""
-                    for i, item in enumerate(value):
-                        s += f"{'#' * level} Item {i + 1}\n"
-                        s += render_value(item, min(level + 1, 6))
-                    if not value:
-                        s += "\n"
-                    return s
+                # Keep dict/list/tuple values unambiguous by dumping them as JSON text.
+                # This avoids confusing nested markdown structures.
+                elif isinstance(value, (dict, list, tuple)):
+                    try:
+                        return (
+                            json.dumps(
+                                value,
+                                indent=2,
+                                sort_keys=True,
+                                ensure_ascii=False,
+                            ).strip()
+                            + "\n\n"
+                        )
+                    except Exception:
+                        return f"{str(value).strip()}\n\n"
                 else:
                     return f"{str(value).strip()}\n\n"
 
