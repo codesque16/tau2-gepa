@@ -591,13 +591,21 @@ Based on your analysis, propose an improved version that:
 3. Makes meaningful improvements rather than superficial changes{constraint_line}""")
 
     # Output format - always present
+#     sections.append("""
+# ## Output Format
+
+# Provide ONLY the improved version within ``` blocks. The output must be a complete, 
+# drop-in replacement for the current component (whether it's a prompt, configuration, 
+# code, or any other parameter type).
+# Do not include explanations, commentary, or markdown outside the ``` blocks.""")
+
+    # Output format - always present
     sections.append("""
 ## Output Format
 
-Provide ONLY the improved version within ``` blocks. The output must be a complete, 
-drop-in replacement for the current component (whether it's a prompt, configuration, 
-code, or any other parameter type).
-Do not include explanations, commentary, or markdown outside the ``` blocks.""")
+Provide ONLY the improved version. The output must be a complete, 
+drop-in replacement for the current policy used for the assistant.
+Do not include explanations, commentary or anythign other than just the improved policy""")
 
     return "\n".join(sections)
 
