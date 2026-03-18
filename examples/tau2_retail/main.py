@@ -117,6 +117,16 @@ def main():
         help="Resume from an existing GEPA run directory (must contain gepa_state.bin).",
     )
     parser.add_argument(
+        "--dump-visualizer-events",
+        action="store_true",
+        help="Dump GEPA callback events + evaluation traces into gepa/outputs/<run>/visualizer_dump/",
+    )
+    parser.add_argument(
+        "--capture-traces",
+        action="store_true",
+        help="Request per-task conversation traces during evaluation (slower, larger dumps).",
+    )
+    parser.add_argument(
         "--reflection-lm",
         default=REFLECTION_LM,
         help='Reflection LM used for GEPA (default: "%(default)s")',
@@ -173,6 +183,7 @@ def main():
             track_best_outputs=True,
             candidate_selection_strategy="pareto",
             display_progress_bar=True,
+            capture_traces=args.capture_traces,
         ),
         reflection=ReflectionConfig(
             reflection_lm=args.reflection_lm,
@@ -181,6 +192,7 @@ def main():
         tracking=TrackingConfig(
             use_wandb=True,
             use_logfire=True,
+            dump_visualizer_events=args.dump_visualizer_events,
         ),
     )
 

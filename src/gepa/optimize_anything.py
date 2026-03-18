@@ -130,6 +130,7 @@ from gepa.core.state import EvaluationCache, FrontierType
 from gepa.image import Image  # noqa: F401 — re-exported for user convenience
 from gepa.logging.experiment_tracker import create_experiment_tracker
 from gepa.logging.logfire_integration import LogfireSpanCallback
+from gepa.logging.filesystem_dump_callback import FilesystemDumpCallback
 from gepa.logging.logger import Logger, LoggerProtocol, StdOutLogger
 from gepa.proposer.merge import MergeProposer
 from gepa.proposer.reflective_mutation.base import CandidateSelector, LanguageModel, ReflectionComponentSelector
@@ -498,6 +499,10 @@ class EngineConfig:
     # output manually and pass it to oa.log().
     capture_stdio: bool = False
 
+    # When True, request adapters to capture per-task traces (conversation/messages)
+    # during evaluation. This can be large and slower.
+    capture_traces: bool = False
+
 
 def _build_reflection_prompt_template(objective: str | None = None, background: str | None = None) -> str:
     """
@@ -792,6 +797,10 @@ class TrackingConfig:
     use_logfire: bool = False
     logfire_api_key: str | None = None
     logfire_run_name: str | None = None
+
+    # Optional filesystem dump for callback events (for building custom visualizers).
+    # Writes JSONL under <run_dir>/visualizer_dump/ by default when enabled.
+    dump_visualizer_events: bool = False
 
 
 @dataclass
@@ -1438,7 +1447,7 @@ def optimize_anything(
     def merge_evaluator(
         inputs: list[DataInst], prog: Candidate
     ) -> tuple[list[object], list[float], list[dict[str, float]] | None]:
-        eval_out = active_adapter.evaluate(inputs, prog, capture_traces=False)
+        eval_out = active_adapter.evaluate(inputs, prog, capture_traces=config.engine.capture_traces)
         return eval_out.outputs, eval_out.scores, eval_out.objective_scores
 
     # --- 12. Build merge proposer from MergeConfig (if provided) ---
@@ -1461,8 +1470,19 @@ def optimize_anything(
 
     # --- 14. Build callbacks (e.g. Logfire spans when use_logfire is True) ---
     callbacks: list[Any] | None = None
+    callbacks_list: list[Any] = []
     if config.tracking.use_logfire:
-        callbacks = [LogfireSpanCallback()]
+        callbacks_list.append(LogfireSpanCallback())
+    if config.tracking.dump_visualizer_events:
+        dump_dir = config.engine.run_dir or "."
+        callbacks_list.append(
+            FilesystemDumpCallback(
+                dump_dir=dump_dir,
+                run_name=os.path.basename(config.engine.run_dir) if config.engine.run_dir else None,
+            )
+        )
+    if callbacks_list:
+        callbacks = callbacks_list
 
     # --- 15. Build the main engine from EngineConfig ---
     engine = GEPAEngine(

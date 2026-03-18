@@ -70,6 +70,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         callbacks: list[GEPACallback] | None = None,
         # Optional parameters
         track_best_outputs: bool = False,
+        capture_traces: bool = False,
         display_progress_bar: bool = False,
         raise_on_exception: bool = True,
         use_cloudpickle: bool = False,
@@ -82,6 +83,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         self.logger = logger
         self.run_dir = run_dir
         self.callbacks = callbacks
+        self.capture_traces = capture_traces
 
         # Graceful stopping mechanism
         self._stop_requested = False
@@ -96,7 +98,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         def evaluator(
             batch: list[DataInst], program: dict[str, str]
         ) -> tuple[list[RolloutOutput], list[float], Sequence[dict[str, float]] | None]:
-            eval_result = adapter.evaluate(batch, program, capture_traces=False)
+            eval_result = adapter.evaluate(batch, program, capture_traces=self.capture_traces)
             return eval_result.outputs, eval_result.scores, eval_result.objective_scores
 
         self.evaluator = evaluator
