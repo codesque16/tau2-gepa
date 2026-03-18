@@ -18,13 +18,10 @@ from datetime import datetime
 
 from examples.tau2_retail.utils import (
     BACKGROUND,
-    # OBJECTIVE,           # generalization mode
-    evaluate,
-    # evaluate_on_dataset, # final comparison on valset
-    load_policy_solo_seed,
-    # load_tau2_retail_dataset,
-    load_tau2_retail_train_only,
     OBJECTIVE_TRAIN_ONLY,
+    evaluate,
+    load_policy_solo_seed,
+    load_tau2_retail_train_only,
 )
 from gepa.optimize_anything import (
     EngineConfig,
@@ -38,7 +35,6 @@ from gepa.optimize_anything import (
 # Config
 REFLECTION_LM = "gemini/gemini-3-flash-preview"
 LLM_AGENT = "gpt-5-nano"
-DIAGNOSIS_LM = "gemini/gemini-3-flash-preview"  # LLM for qualitative ASI on failed tasks
 SEED = 7789797979
 
 # Seed candidate: policy_solo.md content (baseline policy)
@@ -52,10 +48,34 @@ def main():
         action="store_true",
         help="Create a fresh run directory with timestamp (outputs/tau2_retail_MM-DD_HH-MM)",
     )
+    parser.add_argument(
+        "--run-dir",
+        default=None,
+        help="Resume from an existing GEPA run directory (must contain gepa_state.bin).",
+    )
+    parser.add_argument(
+        "--reflection-lm",
+        default=REFLECTION_LM,
+        help='Reflection LM used for GEPA (default: "%(default)s")',
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=SEED,
+        help="Random seed used for evaluation and optimization (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--llm-agent",
+        default=LLM_AGENT,
+        help='LLM agent model used for evaluation (default: "%(default)s")',
+    )
     args = parser.parse_args()
 
     base_dir = "outputs/tau2_retail"
-    if args.fresh:
+    if args.run_dir is not None:
+        log_dir = args.run_dir
+        print(f"Resuming from: {log_dir}")
+    elif args.fresh:
         timestamp = datetime.now().strftime("%m-%d_%H-%M")
         log_dir = f"{base_dir}_{timestamp}"
         print(f"Fresh run: {log_dir}")
@@ -75,15 +95,15 @@ def main():
         return evaluate(
             candidate,
             example,
-            llm_agent=LLM_AGENT,
-            seed=SEED,
-            diagnosis_lm=DIAGNOSIS_LM,
+            llm_agent=args.llm_agent,
+            seed=args.seed,
+            diagnosis_lm=args.reflection_lm,
         )
 
     config = GEPAConfig(
         engine=EngineConfig(
             run_dir=log_dir,
-            max_metric_calls=100,
+            max_metric_calls=200,
             parallel=True,
             max_workers=10,
             cache_evaluation=True,
@@ -92,7 +112,7 @@ def main():
             display_progress_bar=True,
         ),
         reflection=ReflectionConfig(
-            reflection_lm=REFLECTION_LM,
+            reflection_lm=args.reflection_lm,
             reflection_minibatch_size=10,
         ),
         tracking=TrackingConfig(
