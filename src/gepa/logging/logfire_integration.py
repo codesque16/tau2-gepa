@@ -7,8 +7,8 @@ pareto sets with scores, reject/accept, and tree-based parent-child lineage.
 """
 
 import hashlib
+import json
 from typing import Any
-
 from gepa.core.callbacks import (
     BudgetExhaustedEvent,
     BudgetUpdatedEvent,
@@ -119,8 +119,29 @@ class LogfireSpanCallback:
         """Push and pop so span is a leaf (stack stays correct for training_end)."""
         dist = event.get("selection_distribution")
         dist_str = f" probs={dist}" if dist else ""
+        candidate = event.get("candidate") or {}
+        candidate_sha256 = hashlib.sha256(
+            json.dumps(sorted(candidate.items()), default=str, ensure_ascii=True).encode("utf-8")
+        ).hexdigest()
+        # Candidate is a dict of instruction/prompt components; log the most relevant text we can find.
+        prompt_text = (
+            candidate.get("prompt")
+            or candidate.get("instructions")
+            or candidate.get("instruction")
+            or candidate.get("content")
+            or ""
+        )
+        if not prompt_text and isinstance(candidate, dict) and candidate:
+            # Fallback: log all components in a stable order.
+            prompt_text = "\n\n".join(f"{k}: {v}" for k, v in sorted(candidate.items()))
+        # Avoid huge spans if prompts are very long.
+        if isinstance(prompt_text, str) and len(prompt_text) > 8000:
+            prompt_text = prompt_text[:8000] + "\n\n...[truncated]"
         self._push_span(
-            f"On candidate selected: [{event['iteration']}][{event['candidate_idx']}]({event['score']:.2f}){dist_str}",
+            f"On candidate selected: [{event['iteration']}][{event['candidate_idx']}]"
+            f"({event['score']:.2f}) sha256={candidate_sha256[:12]}{dist_str}",
+            candidate_sha256=candidate_sha256,
+            prompt_selected_to_mutate=prompt_text,
             **event,
         )
         self._pop_span()
@@ -178,22 +199,9 @@ class LogfireSpanCallback:
 
     def on_proposal_start(self, event: ProposalStartEvent) -> None:
         """Reflection phase: LLM proposes new candidate. Push so reflection/completion nests under it."""
-        raw_parent = event.get("parent_candidate")
-        # parent_candidate may be a string (tau2) or a dict (optimize_anything generic).
-        if isinstance(raw_parent, dict):
-            parent_text = "\n\n".join(str(v) for k, v in sorted(raw_parent.items()))
-        elif isinstance(raw_parent, str) or raw_parent is None:
-            parent_text = raw_parent or ""
-        else:
-            parent_text = str(raw_parent)
-        parent_hash = hashlib.sha256(parent_text.encode("utf-8")).hexdigest()[:12] if parent_text else ""
-        name_suffix = f"(parent_hash: {parent_hash})" if parent_hash else "(parent: <none>)"
-        event_with_hash = dict(event)
-        if parent_hash:
-            event_with_hash["parent_candidate_sha256_12"] = parent_hash
         self._push_span(
-            f"On reflection (proposal start): [{event['iteration']}] {name_suffix}",
-            **event_with_hash,
+            f"On reflection (proposal start): [{event['iteration']}]",
+            **event,
         )
 
     def on_proposal_end(self, event: ProposalEndEvent) -> None:
