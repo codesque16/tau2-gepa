@@ -124,12 +124,13 @@ Provide the new instructions within ``` blocks."""
 
             # Only render the keys we care about for tau2 policy optimization.
             # Keep formatting stable and parse-friendly for the refiner/proposal LM.
+            # Only render the keys we care about for tau2 policy optimization.
+            # Reward info and conversation trace are typically nested under `per_task_traces`.
             allowed_keys = {
                 "task_description",
                 "score",
-                "reward_info",
-                "conversation",
                 "qualitative_asi",
+                "per_task_traces",
             }
 
             def key_to_label(key: str) -> str:
@@ -138,12 +139,10 @@ Provide the new instructions within ``` blocks."""
                     return "Task description"
                 if key == "score":
                     return "Score"
-                if key == "reward_info":
-                    return "Reward info"
-                if key == "conversation":
-                    return "Conversation trace"
                 if key == "qualitative_asi":
                     return "Qualitative feedback"
+                if key == "per_task_traces":
+                    return "Per-task traces"
                 return key
 
             def convert_sample_to_markdown_tau(sample: Mapping[str, Any], examplenum: int) -> str:
@@ -151,6 +150,30 @@ Provide the new instructions within ``` blocks."""
                 for key, val in sample.items():
                     if key not in allowed_keys:
                         continue
+
+                    # Derive Reward info + Conversation trace from per_task_traces.
+                    if key == "per_task_traces":
+                        parsed = val
+                        if isinstance(parsed, str):
+                            try:
+                                parsed = json.loads(parsed)
+                            except json.JSONDecodeError:
+                                parsed = val
+                        if isinstance(parsed, Mapping) and parsed:
+                            first_tid = next(iter(parsed.keys()))
+                            trace = parsed.get(first_tid, {})
+                            if isinstance(trace, Mapping):
+                                if trace.get("task_description") is not None:
+                                    s += "## Task description\n"
+                                    s += render_value(trace.get("task_description"))
+                                if trace.get("reward_info") is not None:
+                                    s += "## Reward info\n"
+                                    s += render_value(trace.get("reward_info"))
+                                if trace.get("conversation") is not None:
+                                    s += "## Conversation trace\n"
+                                    s += render_value(trace.get("conversation"))
+                        continue
+
                     s += f"## {key_to_label(key)}\n"
                     s += render_value(val)
                 return s
