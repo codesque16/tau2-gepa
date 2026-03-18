@@ -132,8 +132,8 @@ Provide the new instructions within ``` blocks."""
                 "qualitative_asi",
                 "per_task_traces",
                 # Some tau2 feedbacks may provide these as top-level fields.
-                "reward_info",
-                "conversation",
+                # "reward_info",
+                # "conversation",
             }
 
             def key_to_label(key: str) -> str:
@@ -144,10 +144,10 @@ Provide the new instructions within ``` blocks."""
                     return "Score"
                 if key == "qualitative_asi":
                     return "Qualitative feedback"
-                if key == "reward_info":
-                    return "Reward info"
-                if key == "conversation":
-                    return "Conversation trace"
+                # if key == "reward_info":
+                #     return "Reward info"
+                # if key == "conversation":
+                #     return "Conversation trace"
                 if key == "per_task_traces":
                     return "Per-task traces"
                 return key
@@ -187,23 +187,23 @@ Provide the new instructions within ``` blocks."""
                                     flush=True,
                                 )
                                 print(
-                                    "[format_samples_tau] has task_description/reward_info/conversation:",
+                                    "[format_samples_tau] has task_description:",
                                     {
                                         "task_description": trace.get("task_description") is not None,
-                                        "reward_info": trace.get("reward_info") is not None,
-                                        "conversation": trace.get("conversation") is not None,
+                                        # "reward_info": trace.get("reward_info") is not None,
+                                        # "conversation": trace.get("conversation") is not None,
                                     },
                                     flush=True,
                                 )
                                 if trace.get("task_description") is not None:
                                     s += "## Task description\n"
                                     s += render_value(trace.get("task_description"))
-                                if trace.get("reward_info") is not None:
-                                    s += "## Reward info\n"
-                                    s += render_value(trace.get("reward_info"))
-                                if trace.get("conversation") is not None:
-                                    s += "## Conversation trace\n"
-                                    s += render_value(trace.get("conversation"))
+                                # if trace.get("reward_info") is not None:
+                                #     s += "## Reward info\n"
+                                #     s += render_value(trace.get("reward_info"))
+                                # if trace.get("conversation") is not None:
+                                #     s += "## Conversation trace\n"
+                                #     s += render_value(trace.get("conversation"))
                         continue
 
                     s += f"## {key_to_label(key)}\n"

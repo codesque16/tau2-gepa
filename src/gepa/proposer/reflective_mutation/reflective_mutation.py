@@ -1,6 +1,7 @@
 # Copyright (c) 2025 Lakshya A Agrawal and the GEPA contributors
 # https://github.com/gepa-ai/gepa
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -29,6 +30,31 @@ from gepa.strategies.batch_sampler import BatchSampler
 from gepa.strategies.instruction_proposal import InstructionProposalSignature
 
 
+_GEPA_GENERATED_OPEN = "<gepa_generated>"
+_GEPA_GENERATED_CLOSE = "</gepa_generated>"
+
+
+def _apply_gepa_generated_template(template_text: str, generated_text: str) -> str:
+    """Substitute generated text into template at <gepa_generated>.
+
+    Supported forms:
+    - Block form: <gepa_generated> ... </gepa_generated> (replaces the whole block, tags included)
+    - Placeholder form: <gepa_generated> (each occurrence replaced)
+    """
+    if _GEPA_GENERATED_OPEN not in template_text:
+        return generated_text
+
+    if _GEPA_GENERATED_CLOSE in template_text:
+        pattern = re.compile(
+            re.escape(_GEPA_GENERATED_OPEN) + r"[\s\S]*?" + re.escape(_GEPA_GENERATED_CLOSE)
+        )
+        replacement = f"{_GEPA_GENERATED_OPEN}\n{generated_text.strip()}\n{_GEPA_GENERATED_CLOSE}"
+        return pattern.sub(replacement, template_text)
+
+    # No closing tag found; treat as a plain placeholder token.
+    return template_text.replace(_GEPA_GENERATED_OPEN, generated_text.strip())
+
+
 class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
     """
     Implements current reflective mutation flow:
@@ -54,6 +80,7 @@ class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
         experiment_tracker: Any,
         reflection_lm: LanguageModel | None = None,
         reflection_prompt_template: str | dict[str, str] | None = None,
+        gepa_generated_template: str | dict[str, str] | None = None,
         custom_candidate_proposer: ProposalFn | None = None,
         callbacks: list[GEPACallback] | None = None,
     ):
@@ -71,6 +98,7 @@ class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
         self.callbacks = callbacks
 
         self.reflection_prompt_template = reflection_prompt_template
+        self.gepa_generated_template = gepa_generated_template
         # Track parameters for which we've already logged missing template warnings
         self._missing_template_warnings: set[str] = set()
 
@@ -327,7 +355,13 @@ class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
         new_candidate = curr_prog.copy()
         for pname, text in new_texts.items():
             assert pname in new_candidate, f"{pname} missing in candidate"
-            new_candidate[pname] = text
+            template = None
+            if isinstance(self.gepa_generated_template, dict):
+                template = self.gepa_generated_template.get(pname)
+            else:
+                template = self.gepa_generated_template
+
+            new_candidate[pname] = _apply_gepa_generated_template(template, text) if template else text
 
         def evaluator(b, c):
             r = self.adapter.evaluate(b, c, capture_traces=False)

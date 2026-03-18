@@ -37,14 +37,6 @@ Common failure modes:
 
 Preserve the structure (markdown, sections) and improve clarity, completeness, and edge-case handling.
 
-==== EDITING BOUNDARIES (CRITICAL) ====
-- The policy has multiple sections, but you are ONLY allowed to modify:
-  - `## Domain basic`
-  - `## SOP Node Policies`
-  - `## SOP Flowchart`
-- Do NOT add, remove, or rename any other sections.
-- Keep the same headings and overall structure; only rewrite content inside these three sections.
-
 ==== GUIDELINES FOR WHAT GOES WHERE ====
 - Convert procedural instructions (if/then logic, decision trees, multi-step workflows) into the **SOP Flowchart**.
 - Keep as prose anything that is global context, tone guidance, or does not map naturally to a flow.
@@ -62,12 +54,11 @@ Preserve the structure (markdown, sections) and improve clarity, completeness, a
 - `## SOP Flowchart` — full mermaid graph with all node detail, annotations, and edge conditions. This is the source of truth that load_graph will parse.
 - `## SOP Node Policies` — node-level tools and policies.
 
-ALWAYS obey these boundaries: only change content within these three sections and follow the conventions above exactly.
 """
-    + "\n## Retail agent tools (API)\n\n"
-    + "The following tools are available to the retail customer-service agent (solo agent; internal orchestration tools such as bash are not listed). "
-    + "Use this list when reasoning about capabilities and when writing `tool_hints` in node policies — only reference tool names that appear here.\n\n"
-    + _get_retail_available_tools_list()
+    # + "\n## Retail agent tools (API)\n\n"
+    # + "The following tools are available to the retail customer-service agent (solo agent; internal orchestration tools such as bash are not listed). "
+    # + "Use this list when reasoning about capabilities and when writing `tool_hints` in node policies — only reference tool names that appear here.\n\n"
+    # + _get_retail_available_tools_list()
 )
 
 OBJECTIVE = """Maximize the score for each task. Score is 1.0 or 0.0 depending on whether the run was a success or not"""

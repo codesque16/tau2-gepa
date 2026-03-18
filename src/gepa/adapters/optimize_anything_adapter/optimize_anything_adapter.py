@@ -533,7 +533,7 @@ class OptimizeAnythingAdapter(GEPAAdapter):
 
             parts: list[str] = []
 
-            # Task description, reward info, conversation trace: only from per_task_traces.
+            # Task description (and optionally other trace fields): only from per_task_traces.
             # Keep it bounded; only show up to the first 1 trace to control prompt size.
             shown = 0
             if parsed_per_task_traces is not None and isinstance(parsed_per_task_traces, Mapping):
@@ -544,10 +544,10 @@ class OptimizeAnythingAdapter(GEPAAdapter):
                     if isinstance(trace, Mapping):
                         parts.append("-> Task description:")
                         parts.append(str(trace.get("task_description", "")))
-                        parts.append("-> Reward info:")
-                        parts.append(str(trace.get("reward_info", "")))
-                        parts.append("-> Conversation trace:")
-                        parts.append(str(trace.get("conversation", "")))
+                        # parts.append("-> Reward info:")
+                        # parts.append(str(trace.get("reward_info", "")))
+                        # parts.append("-> Conversation trace:")
+                        # parts.append(str(trace.get("conversation", "")))
                     else:
                         parts.append("-> Task description:")
                         parts.append(str(trace))
@@ -565,17 +565,17 @@ class OptimizeAnythingAdapter(GEPAAdapter):
         # For each attempt we include a small summary. Then the refiner sees the
         # full evaluation history in consistent tau2-flavored format.
         blocks: list[str] = ["<evaluation_history>"]
-        # Add a single tools_list section (global) right after the opening tag.
-        # Many tau2 refiner prompts benefit from knowing the tool universe once,
-        # instead of repeating it per example.
-        first_side_info: Any = None
-        for attempt in all_attempts:
-            if isinstance(attempt, Mapping):
-                first_side_info = attempt.get("side_info")
-                break
-        if isinstance(first_side_info, Mapping) and first_side_info.get("tools_list") is not None:
-            blocks.append("-> Tools list:")
-            blocks.append(str(first_side_info.get("tools_list")))
+        # # Add a single tools_list section (global) right after the opening tag.
+        # # Many tau2 refiner prompts benefit from knowing the tool universe once,
+        # # instead of repeating it per example.
+        # first_side_info: Any = None
+        # for attempt in all_attempts:
+        #     if isinstance(attempt, Mapping):
+        #         first_side_info = attempt.get("side_info")
+        #         break
+        # if isinstance(first_side_info, Mapping) and first_side_info.get("tools_list") is not None:
+        #     blocks.append("-> Tools list:")
+        #     blocks.append(str(first_side_info.get("tools_list")))
         for i, attempt in enumerate(all_attempts):
             if not isinstance(attempt, Mapping):
                 blocks.append(f"---Attempt {i} (non-mapping)---\n{json.dumps(attempt, default=str)}")

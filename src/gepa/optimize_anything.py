@@ -129,8 +129,8 @@ from gepa.core.result import GEPAResult
 from gepa.core.state import EvaluationCache, FrontierType
 from gepa.image import Image  # noqa: F401 — re-exported for user convenience
 from gepa.logging.experiment_tracker import create_experiment_tracker
-from gepa.logging.logfire_integration import LogfireSpanCallback
 from gepa.logging.filesystem_dump_callback import FilesystemDumpCallback
+from gepa.logging.logfire_integration import LogfireSpanCallback
 from gepa.logging.logger import Logger, LoggerProtocol, StdOutLogger
 from gepa.proposer.merge import MergeProposer
 from gepa.proposer.reflective_mutation.base import CandidateSelector, LanguageModel, ReflectionComponentSelector
@@ -518,15 +518,13 @@ def _build_reflection_prompt_template(objective: str | None = None, background: 
     Returns:
         A reflection prompt template string with <curr_param> and <side_info> placeholders.
     """
-    sections = []
+    sections: list[str] = []
 
-    # System context - always present
     sections.append(
-        "You are an expert optimization assistant. Your task is to analyze evaluation "
-        "feedback and propose an improved version of a system component."
+        "You are an expert optimization assistant. Your task is to analyze evaluation feedback and propose an improved "
+        "version of the <current_policy> based on the <output_format> provided."
     )
 
-    # Objective section
     if objective:
         sections.append(f"""
 ## Optimization Goal
@@ -540,23 +538,8 @@ def _build_reflection_prompt_template(objective: str | None = None, background: 
 
 {background}""")
 
-    # Current component and evaluation data - always present
-    sections.append("""
-## Current Component
-
-The component being optimized:
-
-```
-<curr_param>
-```
-
-## Evaluation Results
-
-Performance data from evaluating the current component across test cases:
-
-```
-<side_info>
-```""")
+    sections.append("\n<current_policy>\n<curr_param>\n</current_policy>")
+    sections.append("\n<evaluation_results>\n<side_info>\n</evaluation_results>")
 
     # Analysis instructions - tailored based on what context is available
     analysis_points = []
@@ -578,34 +561,37 @@ Performance data from evaluating the current component across test cases:
 
     analysis_section = "\n".join(analysis_points)
     constraint_line = "\n4. Adheres to all constraints and requirements from the domain context" if background else ""
-    sections.append(f"""
-## Your Task
+#     sections.append(f"""
+# ## Your Task
 
-Analyze the evaluation results systematically:
+# Analyze the evaluation results systematically:
 
-{analysis_section}
+# {analysis_section}
 
-Based on your analysis, propose an improved version that:
-1. Addresses the identified failure patterns and root causes
-2. Preserves successful behaviors from the current version
-3. Makes meaningful improvements rather than superficial changes{constraint_line}""")
+# Based on your analysis, propose an improved version that:
+# 1. Addresses the identified failure patterns and root causes
+# 2. Preserves successful behaviors from the current version
+# 3. Makes meaningful improvements rather than superficial changes{constraint_line}""")
 
     # Output format - always present
 #     sections.append("""
 # ## Output Format
 
-# Provide ONLY the improved version within ``` blocks. The output must be a complete, 
-# drop-in replacement for the current component (whether it's a prompt, configuration, 
+# Provide ONLY the improved version within ``` blocks. The output must be a complete,
+# drop-in replacement for the current component (whether it's a prompt, configuration,
 # code, or any other parameter type).
 # Do not include explanations, commentary, or markdown outside the ``` blocks.""")
 
     # Output format - always present
     sections.append("""
-## Output Format
-
-Provide ONLY the improved version. The output must be a complete, 
-drop-in replacement for the current policy used for the assistant.
-Do not include explanations, commentary or anythign other than just the improved policy""")
+<output_format>
+- Output MUST contain ONLY the improved versions of the following three sections of the policy, in this exact order, each with its heading:
+  1) `## SOP Global Policies`
+  2) `## SOP Node Policies`
+  3) `## SOP Flowchart`
+- Do NOT output any other text, analysis, explanations, preambles, epilogues, or additional sections.
+- Keep the headings exactly as written above; do not rename them.
+- Keep the mermaid block fenced as in the original policy (a ```mermaid fenced block inside `## SOP Flowchart`).""")
 
     return "\n".join(sections)
 
@@ -731,6 +717,11 @@ class ReflectionConfig:
     module_selector: ReflectionComponentSelector | Literal["round_robin", "all"] = "round_robin"
     reflection_lm: LanguageModel | str | None = "openai/gpt-5.1"
     reflection_prompt_template: str | dict[str, str] | None = optimize_anything_reflection_prompt_template
+    # Optional wrapper template for storing generated candidates.
+    # If provided, the proposed text is substituted into this template at the tag:
+    #   <gepa_generated> ... </gepa_generated>
+    # Supports a single template string or per-parameter templates via dict.
+    gepa_generated_template: str | dict[str, str] | None = None
     custom_candidate_proposer: ProposalFn | None = None
 
 
@@ -1448,6 +1439,7 @@ def optimize_anything(
         experiment_tracker=experiment_tracker,
         reflection_lm=config.reflection.reflection_lm,
         reflection_prompt_template=config.reflection.reflection_prompt_template,
+        gepa_generated_template=config.reflection.gepa_generated_template,
         custom_candidate_proposer=config.reflection.custom_candidate_proposer,
     )
 
