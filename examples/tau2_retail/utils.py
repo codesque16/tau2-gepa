@@ -65,13 +65,13 @@ OBJECTIVE = """Maximize the score for each task. Score is 1.0 or 0.0 depending o
 
 # Train-only mode: maximize score on this fixed set of task IDs (no valset).
 TRAIN_ONLY_TASK_IDS = [
-    "12", "17", "23", "27", "32", "33", "34", "45", "42", "43",
+    "2", "12", "17", "23", "27", "32", "33", "34", "45", "42", "43",
     "56", "57", "66", "68", "78", "73", "86", "81", "91", "113", "102", "103",
 ]
 # Train-only mode: maximize score on this fixed set of task IDs (no valset).
-TRAIN_ONLY_TASK_IDS = [
-    "12", "23", "32", "56", "66", "78"
-]
+# TRAIN_ONLY_TASK_IDS = [
+#     "12", "23", "32", "56", "66", "78"
+# ]
 OBJECTIVE_TRAIN_ONLY = "Maximize the score for each task. Score is 1.0 or 0.0 depending on whether the run was a success or not"
 
 def load_policy_solo_seed(split_path: Path | None = None) -> str:
