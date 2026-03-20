@@ -71,6 +71,7 @@ gskill = [
 tau2 = [
     "gepa[full]",
     "tau2>=0.2.1",
+    "markdown-it-py>=3.0",
 ]
 # Logfire observability (spans, LiteLLM tracing). Used when TrackingConfig.use_logfire=True.
 logfire = [

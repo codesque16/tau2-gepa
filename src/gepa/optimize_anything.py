@@ -503,6 +503,15 @@ class EngineConfig:
     # during evaluation. This can be large and slower.
     capture_traces: bool = False
 
+    # Optional: path or label for the seed policy file (shown on optimization start in Logfire).
+    seed_candidate_file: str | None = None
+
+    # Optional: path to markdown file with objective/background (e.g. for Logfire span metadata).
+    reflection_prompts_file: str | None = None
+
+    # Optional: plain-text GEPA merge template file (Logfire span metadata).
+    gepa_template_file: str | None = None
+
 
 def _build_reflection_prompt_template(objective: str | None = None, background: str | None = None) -> str:
     """
@@ -1505,6 +1514,9 @@ def optimize_anything(
         use_cloudpickle=config.engine.use_cloudpickle,
         evaluation_cache=evaluation_cache,
         callbacks=callbacks,
+        seed_candidate_file=config.engine.seed_candidate_file,
+        reflection_prompts_file=config.engine.reflection_prompts_file,
+        gepa_template_file=config.engine.gepa_template_file,
     )
 
     # --- 16. Run optimization ---

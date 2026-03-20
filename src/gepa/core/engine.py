@@ -79,9 +79,15 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         val_evaluation_policy: EvaluationPolicy[DataId, DataInst] | None = None,
         # Evaluation caching (stored in state, passed here for initialization)
         evaluation_cache: EvaluationCache[RolloutOutput, DataId] | None = None,
+        seed_candidate_file: str | None = None,
+        reflection_prompts_file: str | None = None,
+        gepa_template_file: str | None = None,
     ):
         self.logger = logger
         self.run_dir = run_dir
+        self.seed_candidate_file = seed_candidate_file
+        self.reflection_prompts_file = reflection_prompts_file
+        self.gepa_template_file = gepa_template_file
         self.callbacks = callbacks
         self.capture_traces = capture_traces
 
@@ -343,6 +349,9 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     "seed": self.seed,
                     "track_best_outputs": self.track_best_outputs,
                     "run_dir": self.run_dir,
+                    "seed_candidate_file": self.seed_candidate_file,
+                    "reflection_prompts_file": self.reflection_prompts_file,
+                    "gepa_template_file": self.gepa_template_file,
                 },
             ),
         )

@@ -8,20 +8,23 @@ pareto sets with scores, reject/accept, and tree-based parent-child lineage.
 
 import hashlib
 import json
+import os
 from typing import Any
+
 from gepa.core.callbacks import (
     BudgetExhaustedEvent,
     BudgetUpdatedEvent,
     CandidateAcceptedEvent,
     CandidateRejectedEvent,
     CandidateSelectedEvent,
+    ErrorEvent,
     EvaluationEndEvent,
-    EvaluationStartEvent,
     EvaluationSkippedEvent,
+    EvaluationStartEvent,
     IterationEndEvent,
     IterationStartEvent,
-    MergeAttemptedEvent,
     MergeAcceptedEvent,
+    MergeAttemptedEvent,
     MergeRejectedEvent,
     MinibatchSampledEvent,
     OptimizationEndEvent,
@@ -35,8 +38,8 @@ from gepa.core.callbacks import (
     TrainingStartEvent,
     ValsetEvaluatedEvent,
     ValsetEvaluationStartEvent,
-    ErrorEvent,
 )
+
 
 class LogfireSpanCallback:
     """Creates Logfire spans for iteration and evaluation events.
@@ -79,9 +82,34 @@ class LogfireSpanCallback:
     # =========================================================================
 
     def on_optimization_start(self, event: OptimizationStartEvent) -> None:
-        run_dir = (event.get("config") or {}).get("run_dir") or ""
-        name = f"On optimization start ({run_dir})" if run_dir else "On optimization start"
-        self._push_span(name, **event)
+        cfg = dict(event.get("config") or {})
+        run_dir = cfg.get("run_dir") or ""
+        seed_path = cfg.get("seed_candidate_file") or ""
+        prompts_path = cfg.get("reflection_prompts_file") or ""
+        gepa_tpl_path = cfg.get("gepa_template_file") or ""
+        seed_name = os.path.basename(seed_path) if seed_path else ""
+        prompts_name = os.path.basename(prompts_path) if prompts_path else ""
+        gepa_tpl_name = os.path.basename(gepa_tpl_path) if gepa_tpl_path else ""
+        if seed_path and seed_name:
+            cfg["seed_candidate_file"] = seed_name
+            cfg["seed_candidate_path"] = seed_path
+        if prompts_path and prompts_name:
+            cfg["reflection_prompts_file"] = prompts_name
+            cfg["reflection_prompts_path"] = prompts_path
+        if gepa_tpl_path and gepa_tpl_name:
+            cfg["gepa_template_file"] = gepa_tpl_name
+            cfg["gepa_template_path"] = gepa_tpl_path
+        parts: list[str] = []
+        if run_dir:
+            parts.append(run_dir)
+        if seed_name:
+            parts.append(f"seed={seed_name}")
+        if prompts_name:
+            parts.append(f"prompts={prompts_name}")
+        if gepa_tpl_name:
+            parts.append(f"template={gepa_tpl_name}")
+        name = f"On optimization start ({', '.join(parts)})" if parts else "On optimization start"
+        self._push_span(name, **{**event, "config": cfg})
 
     def on_optimization_end(self, event: OptimizationEndEvent) -> None:
         self._pop_span()  # optimization
