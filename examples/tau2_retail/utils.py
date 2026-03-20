@@ -1,15 +1,19 @@
 """Tau2 retail benchmark utilities: dataset loading and GEPA evaluation bridge."""
 
 import json
+import re
+import string
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 # tau2 is an optional dependency: pip install -e /path/to/tau2-bench
 try:
-    from gepa.logging.eval_context import get_gepa_eval_context
-    from tau2.gepa_eval import _get_retail_available_tools_list, evaluate_for_gepa
+    from tau2.gepa_eval import evaluate_for_gepa
     from tau2.utils.utils import DATA_DIR
+
+    from gepa.logging.eval_context import get_gepa_eval_context
 except ImportError as e:
     raise ImportError(
         "tau2 package is required for the tau2_retail example. "
@@ -66,7 +70,7 @@ OBJECTIVE = """Maximize the score for each task. Score is 1.0 or 0.0 depending o
 # Train-only mode: maximize score on this fixed set of task IDs (no valset).
 TRAIN_ONLY_TASK_IDS = [
     "2", "12", "17", "23", "27", "32", "33", "34", "45", "42", "43",
-    "56", "57", "66", "68", "78", "73", "86", "81", "91", "113", "102", "103",
+    "56", "66", "68", "78", "73", "86", "81", "91", "113", "102", "103",
 ]
 # Train-only mode: maximize score on this fixed set of task IDs (no valset).
 # TRAIN_ONLY_TASK_IDS = [
@@ -74,12 +78,16 @@ TRAIN_ONLY_TASK_IDS = [
 # ]
 OBJECTIVE_TRAIN_ONLY = "Maximize the score for each task. Score is 1.0 or 0.0 depending on whether the run was a success or not"
 
+def resolve_policy_solo_seed_path(split_path: Path | None = None) -> Path:
+    """Filesystem path to the default tau2 retail policy_solo.md seed."""
+    if split_path is None:
+        return DATA_DIR / "tau2" / "domains" / "retail" / "policy_solo.md"
+    return Path(split_path).parent / "policy_solo.md"
+
+
 def load_policy_solo_seed(split_path: Path | None = None) -> str:
     """Load policy_solo.md content as the seed candidate."""
-    if split_path is None:
-        policy_path = DATA_DIR / "tau2" / "domains" / "retail" / "policy_solo.md"
-    else:
-        policy_path = Path(split_path).parent / "policy_solo.md"
+    policy_path = resolve_policy_solo_seed_path(split_path)
     if not policy_path.exists():
         raise FileNotFoundError(
             f"policy_solo.md not found at {policy_path}. "
@@ -164,6 +172,7 @@ def evaluate(
     seed: int = 7789797979,
     policy_override: bool = True,
     diagnosis_lm: str | None = None,
+    diagnosis_prompt_template: str | None = None,
 ) -> tuple[float, dict[str, Any]]:
     """Evaluate a candidate (policy or extra instructions) on a single tau2 task.
 
@@ -172,6 +181,9 @@ def evaluate(
 
     Returns (score, side_info) for GEPA optimize_anything.
     """
+    if diagnosis_lm and diagnosis_prompt_template:
+        _install_custom_qualitative_asi_prompt(diagnosis_prompt_template)
+
     gepa_context = get_gepa_eval_context()
     score, feedback = evaluate_for_gepa(
         task_ids=[example.task_id],
@@ -197,6 +209,103 @@ def evaluate(
     }
 
     return score, side_info
+
+
+_QUALITATIVE_ASI_PROMPT_LOCK = threading.Lock()
+_QUALITATIVE_ASI_PROMPT_TEMPLATE_LAST: str | None = None
+
+
+def _install_custom_qualitative_asi_prompt(diagnosis_prompt_template: str) -> None:
+    """Install a custom tau2.gepa_eval qualitative-ASl prompt via monkeypatch.
+
+    The template must be compatible with ``string.Template`` and include placeholders:
+      - $task_desc
+      - $tools_list
+      - $reward_info
+      - $trace
+      - $policy_preview
+    """
+    global _QUALITATIVE_ASI_PROMPT_TEMPLATE_LAST
+    with _QUALITATIVE_ASI_PROMPT_LOCK:
+        if _QUALITATIVE_ASI_PROMPT_TEMPLATE_LAST == diagnosis_prompt_template:
+            return
+
+        required_placeholders = {"$task_desc", "$tools_list", "$reward_info", "$trace", "$policy_preview"}
+        placeholder_tokens = set(re.findall(r"\$[A-Za-z_][A-Za-z0-9_]*", diagnosis_prompt_template))
+
+        missing = required_placeholders - placeholder_tokens
+        if missing:
+            raise ValueError(
+                "diagnosis_prompt_template is missing required placeholders: "
+                + ", ".join(sorted(missing))
+            )
+
+        unknown = placeholder_tokens - required_placeholders
+        if unknown:
+            raise ValueError(
+                "diagnosis_prompt_template contains unknown placeholders: "
+                + ", ".join(sorted(unknown))
+                + ". Allowed placeholders are: "
+                + ", ".join(sorted(required_placeholders))
+            )
+
+        import tau2.gepa_eval as gepa_eval_mod
+
+        def _get_qualitative_asi_custom(  # type: ignore[override]
+            results,
+            failed_task_ids: list[str],
+            policy_preview: str,
+            diagnosis_lm: str,
+        ) -> str:
+            """Custom qualitative ASI using the installed template."""
+            try:
+                from litellm import completion
+            except ImportError:
+                return "(qualitative ASI skipped: litellm not available)"
+
+            task_by_id = {t.id: t for t in results.tasks}
+            sims_by_task: dict[str, Any] = {}
+            for sim in results.simulations:
+                if (
+                    sim.task_id not in sims_by_task
+                    or (sim.reward_info and sim.reward_info.reward < 0.99)
+                ):
+                    sims_by_task[sim.task_id] = sim
+
+            tmpl = string.Template(diagnosis_prompt_template)
+            diagnoses: list[str] = []
+
+            for tid in failed_task_ids[:5]:  # Limit to 5 to control cost
+                task = task_by_id.get(tid)
+                sim = sims_by_task.get(tid)
+                if not task or not sim:
+                    continue
+
+                task_desc = task.ticket
+                trace = gepa_eval_mod._format_trace(sim.messages, max_messages=None)
+                reward_info = gepa_eval_mod._format_reward_info(sim)
+                tools_list = gepa_eval_mod._get_retail_available_tools_list()
+
+                prompt = tmpl.substitute(
+                    task_desc=task_desc,
+                    tools_list=tools_list,
+                    reward_info=reward_info,
+                    trace=trace,
+                    policy_preview=policy_preview,
+                )
+
+                resp = completion(
+                    model=diagnosis_lm,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                )
+                text = resp.choices[0].message.content or ""
+                diagnoses.append(text.strip())
+
+            return "\n\n".join(diagnoses) if diagnoses else ""
+
+        gepa_eval_mod._get_qualitative_asi = _get_qualitative_asi_custom
+        _QUALITATIVE_ASI_PROMPT_TEMPLATE_LAST = diagnosis_prompt_template
 
 
 def evaluate_on_dataset(
