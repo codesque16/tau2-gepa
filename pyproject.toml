@@ -22,12 +22,12 @@ dependencies = []
 [project.optional-dependencies]
 full = [
     # Original dependencies for Python < 3.14
-    "litellm>=1.64.0; python_version < '3.14'",
+    "litellm>=1.82.0; python_version < '3.14'",
     "datasets>=2.14.6; python_version < '3.14'",
     "mlflow>=3.0.0; python_version < '3.14'",
     "wandb; python_version < '3.14'",
     # Updated dependencies for Python 3.14+
-    "litellm>=1.81.0; python_version >= '3.14'",
+    "litellm>=1.82.0; python_version >= '3.14'",
     "datasets>=4.5.0; python_version >= '3.14'",
     "mlflow-skinny>=3.8.1; python_version >= '3.14'",
     "wandb>=0.23.0; python_version >= '3.14'",
