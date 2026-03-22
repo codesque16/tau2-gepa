@@ -171,6 +171,12 @@ def main() -> None:
 
     load_dotenv()
     configure_from_simulation_dict(merged)
+    from domains.retail.llm_seed_chain import (
+        LLMSeedChain,
+        LLMSeedChainCallback,
+        retail_llm_seed_master_from_gepa_cfg,
+    )
+
     gepa = merged.get("gepa") or {}
     if not gepa:
         raise ValueError(f"YAML must contain a non-empty 'gepa:' section: {cfg_path}")
@@ -282,9 +288,28 @@ def main() -> None:
         custom_reflection_template = None
         reflection_for_optimize = (objective, background)
 
-    eval_seed = gepa.get("evaluation_seed")
-    if eval_seed is not None:
-        eval_seed = int(eval_seed)
+    eval_seed_raw = gepa.get("evaluation_seed")
+    eval_seed: int | None
+    if eval_seed_raw is None or str(eval_seed_raw).strip() == "":
+        eval_seed = None
+    else:
+        eval_seed = int(eval_seed_raw)
+
+    _gepa_cb_allowed = "gepa_callbacks" in {f.name for f in dataclasses.fields(GEPAConfig)}
+    use_llm_seed_chain = bool(gepa.get("llm_seed_chain", False))
+    llm_seed_chain: LLMSeedChain | None = None
+    gepa_callbacks_list: list[Any] | None = None
+    if use_llm_seed_chain:
+        if not _gepa_cb_allowed:
+            print(
+                "WARNING: gepa.llm_seed_chain is true but installed GEPAConfig has no "
+                "`gepa_callbacks`; seed chaining disabled. Use the repo's vendored gepa.",
+                file=sys.stderr,
+            )
+        else:
+            _master = retail_llm_seed_master_from_gepa_cfg(gepa)
+            llm_seed_chain = LLMSeedChain(_master)
+            gepa_callbacks_list = [LLMSeedChainCallback(llm_seed_chain)]
 
     reflection_lm_spec = gepa.get("reflection_lm") or "gemini/gemini-3-flash-preview"
     reflection_llm_backend = str(gepa.get("reflection_llm_backend") or "litellm").strip().lower()
@@ -463,7 +488,7 @@ def main() -> None:
                 instructions_text=instructions_text,
                 simulation_raw=sim_raw,
                 evaluate_communication=evaluate_comm,
-                seed=eval_seed,
+                seed=llm_seed_chain.read() if llm_seed_chain is not None else eval_seed,
                 diagnosis_lm=diagnosis_lm,
                 diagnosis_prompt_template=_eval_tpl_stripped,
                 diagnosis_llm_backend=diagnosis_llm_backend,
@@ -482,7 +507,7 @@ def main() -> None:
                 instructions_text=instructions_text,
                 simulation_raw=sim_raw,
                 evaluate_communication=evaluate_comm,
-                seed=eval_seed,
+                seed=llm_seed_chain.read() if llm_seed_chain is not None else eval_seed,
                 diagnosis_lm=diagnosis_lm,
                 diagnosis_prompt_template=_eval_tpl_stripped,
                 diagnosis_llm_backend=diagnosis_llm_backend,
@@ -515,6 +540,10 @@ def main() -> None:
             max_merge_invocations=int(gepa.get("merge_max_invocations", 5)),
             merge_val_overlap_floor=int(gepa.get("merge_val_overlap_floor", 5)),
         )
+
+    _top_gepa_kw: dict[str, Any] = {"merge": merge}
+    if _gepa_cb_allowed:
+        _top_gepa_kw["gepa_callbacks"] = gepa_callbacks_list
 
     config = GEPAConfig(
         engine=_filtered_dataclass(
@@ -549,7 +578,7 @@ def main() -> None:
             use_logfire=bool(gepa.get("use_logfire", True)),
             dump_visualizer_events=bool(gepa.get("dump_visualizer_events", False)),
         ),
-        merge=merge,
+        **_top_gepa_kw,
     )
 
     want_lf = bool(gepa.get("use_logfire", True))
@@ -609,6 +638,14 @@ def main() -> None:
         print(f"  valset_task_ids:  {[t.get('id') for t in (valset_tasks or [])]}")
     print(f"Seed policy: {seed_label}")
     print(f"Log dir: {log_dir}")
+    if llm_seed_chain is not None:
+        print(
+            "llm_seed_chain: on "
+            f"(master={retail_llm_seed_master_from_gepa_cfg(gepa)} from gepa.evaluation_seed, "
+            "else legacy gepa.seed, else 42)"
+        )
+    elif eval_seed is not None:
+        print(f"Simulator LLM seed (fixed): evaluation_seed={eval_seed}")
 
     try:
         import logfire as _logfire_for_span
