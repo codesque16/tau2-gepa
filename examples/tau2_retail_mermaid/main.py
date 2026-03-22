@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import dataclasses
+import json
 import os
 import sys
 from datetime import datetime
@@ -612,10 +613,14 @@ def main() -> None:
     try:
         import logfire as _logfire_for_span
 
+        _cfg_name = cfg_path.name
+        _top_span_label = f"tau2_retail_mermaid GEPA · {_cfg_name}"
         top_span = _logfire_for_span.span(
-            "tau2_retail_mermaid GEPA",
+            _top_span_label,
+            _span_name=_top_span_label,
             run_dir=log_dir,
-            config_path=str(cfg_path),
+            config_path=str(cfg_path.resolve()),
+            config_file=_cfg_name,
             optimization_mode=opt_mode,
             num_dataset_tasks=len(dataset_tasks) if dataset_tasks else 0,
             num_valset_tasks=len(valset_tasks) if valset_tasks else 0,
@@ -636,6 +641,20 @@ def main() -> None:
         valset_arg = valset_tasks
 
     with top_span:
+        if want_lf:
+            try:
+                import logfire as _lf_cfg
+
+                _lf_cfg.info(
+                    "experiment_config",
+                    run_kind="gepa_tau2_retail_mermaid",
+                    config_path=str(cfg_path.resolve()),
+                    config_file=cfg_path.name,
+                    config_json=json.dumps(merged, default=str, sort_keys=True),
+                )
+            except Exception:
+                pass
+
         result = optimize_anything(
             seed_candidate=seed_candidate,
             evaluator=evaluator,

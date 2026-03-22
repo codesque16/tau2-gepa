@@ -54,10 +54,13 @@ class LM:
         temperature: float | None = None,
         max_tokens: int | None = None,
         num_retries: int = 3,
+        *,
+        raw_io_phase: str | None = None,
         **kwargs: Any,
     ):
         self.model = model
         self.num_retries = num_retries
+        self.raw_io_phase = raw_io_phase
 
         self.completion_kwargs: dict[str, Any] = {
             **({"temperature": temperature} if temperature is not None else {}),
@@ -88,6 +91,24 @@ class LM:
             drop_params=True,
             **self.completion_kwargs,
         )
+
+        if self.raw_io_phase:
+            try:
+                from agent.gemini_log import log_litellm_raw_io
+
+                log_litellm_raw_io(
+                    phase=self.raw_io_phase,
+                    model=self.model,
+                    messages=messages,
+                    completion=completion,
+                    extra_completion_kwargs={
+                        **self.completion_kwargs,
+                        "num_retries": self.num_retries,
+                        "drop_params": True,
+                    },
+                )
+            except ImportError:
+                pass
 
         # Non-streaming calls always return ModelResponse (not CustomStreamWrapper)
         self._check_truncation(completion.choices)  # type: ignore[union-attr]

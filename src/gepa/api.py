@@ -256,7 +256,7 @@ def optimize(
     if isinstance(reflection_lm, str):
         from gepa.lm import LM
 
-        reflection_lm_callable = LM(reflection_lm)
+        reflection_lm_callable = LM(reflection_lm, raw_io_phase="gepa_reflection")
     else:
         reflection_lm_callable = reflection_lm
 

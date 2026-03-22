@@ -840,6 +840,10 @@ class GEPAConfig:
     # Complex callbacks that aren't serializable
     stop_callbacks: StopperProtocol | Sequence[StopperProtocol] | None = None
 
+    # Optional extra :class:`~gepa.core.callbacks.GEPACallback` instances merged into the engine
+    # callback list (after Logfire / filesystem dump callbacks when those are enabled).
+    gepa_callbacks: Sequence[Any] | None = None
+
     def __post_init__(self):
         """Handle dicts passed in (e.g., from a JSON/YAML file)."""
         if isinstance(self.engine, dict):
@@ -863,7 +867,11 @@ class GEPAConfig:
         return GEPAConfig(**d)
 
 
-def make_litellm_lm(model_name: str) -> LanguageModel:
+def make_litellm_lm(
+    model_name: str,
+    *,
+    raw_io_phase: str | None = None,
+) -> LanguageModel:
     """Convert a LiteLLM model name string to a :class:`LanguageModel` callable.
 
     The returned callable conforms to the ``LanguageModel`` protocol and
@@ -873,10 +881,14 @@ def make_litellm_lm(model_name: str) -> LanguageModel:
     Uses :class:`gepa.lm.LM` which handles reasoning model detection
     (o1/o3/o4/gpt-5), retries with exponential backoff, truncation
     warnings, and ``drop_params=True`` for cross-model compatibility.
+
+    ``raw_io_phase``: when non-``None`` and ``agent.gemini_log`` is importable, each completion
+    is logged (``TAU2_GEMINI_DUMP_PATH`` file + Logfire when raw I/O is enabled). ``optimize_anything``
+    sets this to ``\"gepa_reflection\"`` / ``\"gepa_refiner\"`` automatically for string LMs.
     """
     from gepa.lm import LM
 
-    return LM(model_name)
+    return LM(model_name, raw_io_phase=raw_io_phase)
 
 
 class EvaluatorWrapper:
@@ -1280,12 +1292,18 @@ def optimize_anything(
 
     # Convert reflection_lm string to callable
     if isinstance(config.reflection.reflection_lm, str):
-        config.reflection.reflection_lm = make_litellm_lm(config.reflection.reflection_lm)
+        config.reflection.reflection_lm = make_litellm_lm(
+            config.reflection.reflection_lm,
+            raw_io_phase="gepa_reflection",
+        )
 
     # Convert refiner_lm string to LiteLLM callable (if refiner is enabled)
     if config.refiner is not None:
         if isinstance(config.refiner.refiner_lm, str):
-            config.refiner.refiner_lm = make_litellm_lm(config.refiner.refiner_lm)
+            config.refiner.refiner_lm = make_litellm_lm(
+                config.refiner.refiner_lm,
+                raw_io_phase="gepa_refiner",
+            )
 
     # Generate seed candidate via LLM if seed_candidate was None
     if needs_seed_generation:
@@ -1486,6 +1504,8 @@ def optimize_anything(
                 run_name=os.path.basename(config.engine.run_dir) if config.engine.run_dir else None,
             )
         )
+    if config.gepa_callbacks:
+        callbacks_list.extend(list(config.gepa_callbacks))
     if callbacks_list:
         callbacks = callbacks_list
 
