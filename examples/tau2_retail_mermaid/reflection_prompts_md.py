@@ -31,7 +31,7 @@ Optional:
     # Evaluator
 
     ```
-    Diagnostic/evaluator prompt template used by tau2's qualitative diagnosis LLM.
+    Diagnostic/evaluator prompt template used by the qualitative diagnosis LLM (solo / mermaid stack).
     It must be compatible with Python ``string.Template`` substitution and must include exactly
     these placeholders (all required):
       - $task_desc
@@ -46,7 +46,7 @@ Headings are matched case-insensitively; optional spaces after ``#`` are allowed
 Parsed using ``markdown-it-py`` (token stream).
 
 GEPA merge templates (``<gepa_generated>`` …) are loaded from a separate file; see ``main.py``
-``--gepa-template-file``.
+``gepa.gepa_template_file``.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ from pathlib import Path
 
 from markdown_it import MarkdownIt
 
-# ``string.Template`` placeholders for ``# Evaluator`` (tau2-mermaid / tau2-bench qualitative diagnosis).
+# ``string.Template`` placeholders for ``# Evaluator`` (qualitative diagnosis).
 DIAGNOSIS_PROMPT_PLACEHOLDERS = frozenset(
     {"$task_desc", "$tools_list", "$reward_info", "$trace", "$policy_preview"}
 )

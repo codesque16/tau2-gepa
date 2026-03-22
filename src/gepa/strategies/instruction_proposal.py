@@ -95,12 +95,7 @@ Provide the new instructions within ``` blocks."""
             return text, collected_images
 
         def format_samples_tau(samples: Sequence[Mapping[str, Any]]) -> tuple[str, list[Image]]:
-            """Tau2-specific formatting for GEPA samples.
-
-            - hide noisy fields like `tools_list` and `failed_task_ids` if present
-            - keep stable, easy-to-scan separators
-            - dump dict/list values as JSON text
-            """
+            """Tau2-specific formatting for GEPA reflection: score, task text, optional qualitative ASI only."""
             collected_images: list[Image] = []
 
             def render_value(value: Any) -> str:
@@ -122,91 +117,29 @@ Provide the new instructions within ``` blocks."""
                         return f"{str(value).strip()}\n\n"
                 return f"{str(value).strip()}\n\n"
 
-            # Only render the keys we care about for tau2 policy optimization.
-            # Keep formatting stable and parse-friendly for the refiner/proposal LM.
-            # Only render the keys we care about for tau2 policy optimization.
-            # Reward info and conversation trace are typically nested under `per_task_traces`.
-            allowed_keys = {
-                "task_description",
-                "score",
-                "qualitative_asi",
-                "per_task_traces",
-                # Some tau2 feedbacks may provide these as top-level fields.
-                # "reward_info",
-                # "conversation",
+            labels = {
+                "score": "Score",
+                "task_description": "Task description",
+                "qualitative_asi": "Qualitative feedback",
             }
-
-            def key_to_label(key: str) -> str:
-                # tau2 field -> desired human-readable label
-                if key == "task_description":
-                    return "Task description"
-                if key == "score":
-                    return "Score"
-                if key == "qualitative_asi":
-                    return "Qualitative feedback"
-                # if key == "reward_info":
-                #     return "Reward info"
-                # if key == "conversation":
-                #     return "Conversation trace"
-                if key == "per_task_traces":
-                    return "Per-task traces"
-                return key
+            # Fixed order matches common tau2 reflection prompts (score → ticket → diagnosis).
+            reflect_key_order = ("score", "task_description", "qualitative_asi")
 
             def convert_sample_to_markdown_tau(sample: Mapping[str, Any], examplenum: int) -> str:
                 s = f"======= Example {examplenum} ==========\n"
-                for key, val in sample.items():
-                    if key not in allowed_keys:
-                        continue
-
-                    # Derive Reward info + Conversation trace from per_task_traces.
-                    if key == "per_task_traces":
-                        parsed = val
-                        if isinstance(parsed, str):
-                            print(
-                                f"[format_samples_tau] per_task_traces is str; attempting json.loads() (len={len(parsed)})",
-                                flush=True,
-                            )
-                            try:
-                                parsed = json.loads(parsed)
-                            except json.JSONDecodeError:
-                                print(
-                                    "[format_samples_tau] per_task_traces json.loads() failed; keeping raw string",
-                                    flush=True,
-                                )
-                                parsed = val
-                        if isinstance(parsed, Mapping) and parsed:
-                            first_tid = next(iter(parsed.keys()))
-                            trace = parsed.get(first_tid, {})
-                            if isinstance(trace, Mapping):
-                                print(
-                                    "[format_samples_tau] parsed per_task_traces mapping OK",
-                                    flush=True,
-                                )
-                                print(
-                                    f"[format_samples_tau] first_tid={first_tid} trace_keys={list(trace.keys())}",
-                                    flush=True,
-                                )
-                                print(
-                                    "[format_samples_tau] has task_description:",
-                                    {
-                                        "task_description": trace.get("task_description") is not None,
-                                        # "reward_info": trace.get("reward_info") is not None,
-                                        # "conversation": trace.get("conversation") is not None,
-                                    },
-                                    flush=True,
-                                )
-                                if trace.get("task_description") is not None:
-                                    s += "## Task description\n"
-                                    s += render_value(trace.get("task_description"))
-                                # if trace.get("reward_info") is not None:
-                                #     s += "## Reward info\n"
-                                #     s += render_value(trace.get("reward_info"))
-                                # if trace.get("conversation") is not None:
-                                #     s += "## Conversation trace\n"
-                                #     s += render_value(trace.get("conversation"))
-                        continue
-
-                    s += f"## {key_to_label(key)}\n"
+                for key in reflect_key_order:
+                    val = sample.get(key)
+                    if key == "qualitative_asi":
+                        if val is None:
+                            continue
+                        if isinstance(val, str) and not val.strip():
+                            continue
+                    elif key == "task_description":
+                        if val is None or (isinstance(val, str) and not str(val).strip()):
+                            val = "(no task description)"
+                    elif key == "score" and val is None:
+                        val = 0.0
+                    s += f"## {labels[key]}\n"
                     s += render_value(val)
                 return s
 
@@ -221,7 +154,6 @@ Provide the new instructions within ``` blocks."""
 
         cls.validate_prompt_template(prompt_template)
 
-        print(dataset)
         formatted_text, images = format_samples_tau(dataset)
 
         if images:

@@ -1218,7 +1218,7 @@ http = [
 
 [[package]]
 name = "gepa"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -4739,7 +4739,7 @@ requires-dist = [
     { name = "fs" },
     { name = "gymnasium", specifier = ">=1.2.2" },
     { name = "langfuse", specifier = ">=2.60.7" },
-    { name = "litellm", specifier = ">=1.65.0" },
+    { name = "litellm", specifier = ">=1.82.0" },
     { name = "logfire", extras = ["litellm"] },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "matplotlib", specifier = ">=3.10.1" },
