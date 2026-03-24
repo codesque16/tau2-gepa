@@ -197,6 +197,7 @@ def _run_gepa_eval_diagnosis(
     diagnosis_genai_temperature: float | None = None,
     diagnosis_genai_max_output_tokens: int | None = None,
     diagnosis_genai_reasoning_effort: str | None = None,
+    diagnosis_genai_vertex_ai: bool = False,
     mcp_command: str,
     tools_markdown_path: str | None,
     ticket_text: str,
@@ -243,6 +244,7 @@ def _run_gepa_eval_diagnosis(
             diagnosis_genai_temperature=diagnosis_genai_temperature,
             diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
             diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
+            diagnosis_genai_vertex_ai=diagnosis_genai_vertex_ai,
         )
 
     if nest_gepa_eval_span and logfire is not None:
@@ -284,6 +286,7 @@ def evaluate_policy_with_mermaid_agent(
     diagnosis_genai_temperature: float | None = None,
     diagnosis_genai_max_output_tokens: int | None = None,
     diagnosis_genai_reasoning_effort: str | None = None,
+    diagnosis_genai_vertex_ai: bool = False,
 ) -> tuple[float, dict[str, Any]]:
     """Run one retail solo task with the Gemini (or yaml-configured) agent; score = DB (+ optional comms).
 
@@ -388,6 +391,7 @@ def evaluate_policy_with_mermaid_agent(
                     diagnosis_genai_temperature=diagnosis_genai_temperature,
                     diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
                     diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
+                    diagnosis_genai_vertex_ai=diagnosis_genai_vertex_ai,
                     mcp_command=mcp_command,
                     tools_markdown_path=tools_markdown_path,
                     ticket_text=(task.get("ticket") or "")[:8000],
@@ -420,6 +424,7 @@ def evaluate_policy_with_mermaid_agent(
                 diagnosis_genai_temperature=diagnosis_genai_temperature,
                 diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
                 diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
+                diagnosis_genai_vertex_ai=diagnosis_genai_vertex_ai,
                 mcp_command=mcp_command,
                 tools_markdown_path=tools_markdown_path,
                 ticket_text=(task.get("ticket") or "")[:8000],

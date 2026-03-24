@@ -365,6 +365,7 @@ def main() -> None:
     diagnosis_genai_reasoning_effort = (
         str(gepa.get("diagnosis_genai_reasoning_effort") or "").strip() or None
     )
+    diagnosis_genai_vertex_ai = bool(gepa.get("diagnosis_genai_vertex_ai", False))
 
     _eval_tpl_stripped = (evaluator_prompt_template or "").strip() or None
     if _eval_tpl_stripped and diagnosis_lm:
@@ -439,6 +440,7 @@ def main() -> None:
             if gepa.get("reflection_genai_max_output_tokens") is not None
             else None,
             reasoning_effort=str(gepa.get("reflection_genai_reasoning_effort") or "").strip() or None,
+            vertex_ai=bool(gepa.get("reflection_genai_vertex_ai", False)),
         )
         if not use_cloudpickle:
             print(
@@ -511,6 +513,7 @@ def main() -> None:
                 diagnosis_genai_temperature=diagnosis_genai_temperature,
                 diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
                 diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
+                diagnosis_genai_vertex_ai=diagnosis_genai_vertex_ai,
             )
     else:
         assert dataset_tasks is not None
@@ -530,6 +533,7 @@ def main() -> None:
                 diagnosis_genai_temperature=diagnosis_genai_temperature,
                 diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
                 diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
+                diagnosis_genai_vertex_ai=diagnosis_genai_vertex_ai,
             )
 
     reflection_kw: dict[str, Any] = {
