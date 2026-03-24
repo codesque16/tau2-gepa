@@ -57,12 +57,20 @@ class LogfireSpanCallback:
     def __init__(self) -> None:
         self._span_stack: list[Any] = []
         self._logfire = None
+        self._proposal_cap: int | None = None
+        self._metric_cap: int | None = None
         try:
             import logfire
 
             self._logfire = logfire
         except ImportError:
             pass
+
+    def _format_iteration_index(self, it: int) -> str:
+        """``3/10`` when ``max_candidate_proposals`` is set; else ``3``."""
+        if self._proposal_cap is not None:
+            return f"{it}/{self._proposal_cap}"
+        return str(it)
 
     def _push_span(self, name: str, **attrs: Any) -> None:
         if self._logfire is None:
@@ -99,6 +107,8 @@ class LogfireSpanCallback:
         if gepa_tpl_path and gepa_tpl_name:
             cfg["gepa_template_file"] = gepa_tpl_name
             cfg["gepa_template_path"] = gepa_tpl_path
+        self._metric_cap = cfg.get("max_metric_calls_budget")
+        self._proposal_cap = cfg.get("max_candidate_proposals_cap")
         parts: list[str] = []
         if run_dir:
             parts.append(run_dir)
@@ -121,7 +131,8 @@ class LogfireSpanCallback:
     def on_iteration_start(self, event: IterationStartEvent) -> None:
         # Drop raw GEPAState object from span attributes; keep only serializable fields.
         event_no_state = {k: v for k, v in event.items() if k != "state"}
-        self._push_span(f"On iteration start: {event['iteration']}", **event_no_state)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On iteration start: {it}", **event_no_state)
 
     def on_iteration_end(self, event: IterationEndEvent) -> None:
         self._pop_span()  # iteration start
@@ -132,8 +143,9 @@ class LogfireSpanCallback:
         if best is not None and score is not None and pareto_agg is not None:
             extra = f" best_prog={best} best_score={score:.2f} pareto_agg={pareto_agg:.2f}"
         event_no_state = {k: v for k, v in event.items() if k != "state"}
+        it = self._format_iteration_index(int(event["iteration"]))
         self._push_span(
-            f"On iteration end: {event['iteration']}{extra}",
+            f"On iteration end: {it}{extra}",
             **event_no_state,
         )
         self._pop_span()
@@ -165,8 +177,9 @@ class LogfireSpanCallback:
         # Avoid huge spans if prompts are very long.
         if isinstance(prompt_text, str) and len(prompt_text) > 8000:
             prompt_text = prompt_text[:8000] + "\n\n...[truncated]"
+        it = self._format_iteration_index(int(event["iteration"]))
         self._push_span(
-            f"On candidate selected: [{event['iteration']}][{event['candidate_idx']}]"
+            f"On candidate selected: [{it}][{event['candidate_idx']}]"
             f"({event['score']:.2f}) sha256={candidate_sha256[:12]}{dist_str}",
             candidate_sha256=candidate_sha256,
             prompt_selected_to_mutate=prompt_text,
@@ -176,7 +189,11 @@ class LogfireSpanCallback:
 
     def on_minibatch_sampled(self, event: MinibatchSampledEvent) -> None:
         """Push and pop so span is a leaf (otherwise training_end would pop wrong span)."""
-        self._push_span(f"On minibatch sampled: [{event['iteration']}]({len(event['minibatch_ids'])}/{event['trainset_size']})", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(
+            f"On minibatch sampled: [{it}]({len(event['minibatch_ids'])}/{event['trainset_size']})",
+            **event,
+        )
         self._pop_span()
 
     # =========================================================================
@@ -185,17 +202,29 @@ class LogfireSpanCallback:
 
     def on_evaluation_start(self, event: EvaluationStartEvent) -> None:
         """Called before evaluating a candidate."""
-        self._push_span(f"On evaluation start: [{event['iteration']}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(
+            f"On evaluation start: [{it}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})",
+            **event,
+        )
 
     def on_evaluation_end(self, event: EvaluationEndEvent) -> None:
         """Pop evaluation start, then push/pop so evaluation end is a leaf."""
         self._pop_span()  # On evaluation start
-        self._push_span(f"On evaluation end: [{event['iteration']}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(
+            f"On evaluation end: [{it}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})",
+            **event,
+        )
         self._pop_span()
 
     def on_evaluation_skipped(self, event: EvaluationSkippedEvent) -> None:
         """Push and pop so span is a leaf."""
-        self._push_span(f"On evaluation skipped: [{event['iteration']}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(
+            f"On evaluation skipped: [{it}][{event['candidate_idx']}](is_seed: {event['is_seed_candidate']})",
+            **event,
+        )
         self._pop_span()
 
     def on_valset_evaluation_start(self, event: ValsetEvaluationStartEvent) -> None:
@@ -210,8 +239,9 @@ class LogfireSpanCallback:
     def on_valset_evaluated(self, event: ValsetEvaluatedEvent) -> None:
         """Pop valset eval start, then push/pop valset evaluated (nothing nested under it)."""
         self._pop_span()  # On valset evaluation start
+        it = self._format_iteration_index(int(event["iteration"]))
         self._push_span(
-            f"On valset evaluated: [{event['iteration']}][{event['candidate_idx']}][avg score: {event['average_score']:.2f}](is_best: {event['is_best_program']})",
+            f"On valset evaluated: [{it}][{event['candidate_idx']}][avg score: {event['average_score']:.2f}](is_best: {event['is_best_program']})",
             **event,
         )
         self._pop_span()
@@ -222,20 +252,23 @@ class LogfireSpanCallback:
 
     def on_reflective_dataset_built(self, event: ReflectiveDatasetBuiltEvent) -> None:
         """Push and pop so span is a leaf (stage: dataset for reflection)."""
-        self._push_span(f"On reflective dataset built: [{event['iteration']}][{event['candidate_idx']}]", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On reflective dataset built: [{it}][{event['candidate_idx']}]", **event)
         self._pop_span()
 
     def on_proposal_start(self, event: ProposalStartEvent) -> None:
         """Reflection phase: LLM proposes new candidate. Push so reflection/completion nests under it."""
+        it = self._format_iteration_index(int(event["iteration"]))
         self._push_span(
-            f"On reflection (proposal start): [{event['iteration']}]",
+            f"On reflection (proposal start): [{it}]",
             **event,
         )
 
     def on_proposal_end(self, event: ProposalEndEvent) -> None:
         """Pop reflection span, then push/pop proposal end so nothing nests under it."""
         self._pop_span()  # On reflection (proposal start)
-        self._push_span(f"On proposal end: [{event['iteration']}]", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On proposal end: [{it}]", **event)
         self._pop_span()
 
     # =========================================================================
@@ -244,15 +277,16 @@ class LogfireSpanCallback:
 
     def on_candidate_accepted(self, event: CandidateAcceptedEvent) -> None:
         """Push and pop so span is a leaf (no spurious nesting)."""
+        it = self._format_iteration_index(int(event["iteration"]))
         old = event.get("old_score")
         if old is not None:
             msg = (
-                f"On candidate accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}]"
+                f"On candidate accepted: [{it}][new_idx: {event['new_candidate_idx']}]"
                 f"(old_score: {old:.2f} -> new_score: {event['new_score']:.2f})"
             )
         else:
             msg = (
-                f"On candidate accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}]"
+                f"On candidate accepted: [{it}][new_idx: {event['new_candidate_idx']}]"
                 f"(new_score: {event['new_score']:.2f})"
             )
         self._push_span(msg, **event)
@@ -260,7 +294,11 @@ class LogfireSpanCallback:
 
     def on_candidate_rejected(self, event: CandidateRejectedEvent) -> None:
         """Push and pop so span is a leaf (not nested under budget updated)."""
-        self._push_span(f"On candidate rejected: [{event['iteration']}][old_score: {event['old_score']:.2f}](new_score: {event['new_score']:.2f})", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(
+            f"On candidate rejected: [{it}][old_score: {event['old_score']:.2f}](new_score: {event['new_score']:.2f})",
+            **event,
+        )
         self._pop_span()
 
     # =========================================================================
@@ -269,17 +307,20 @@ class LogfireSpanCallback:
 
     def on_merge_attempted(self, event: MergeAttemptedEvent) -> None:
         """Push and pop so span is a leaf."""
-        self._push_span(f"On merge attempted: [{event['iteration']}]", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On merge attempted: [{it}]", **event)
         self._pop_span()
 
     def on_merge_accepted(self, event: MergeAcceptedEvent) -> None:
         """Push and pop so span is a leaf."""
-        self._push_span(f"On merge accepted: [{event['iteration']}][new_idx: {event['new_candidate_idx']}]", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On merge accepted: [{it}][new_idx: {event['new_candidate_idx']}]", **event)
         self._pop_span()
 
     def on_merge_rejected(self, event: MergeRejectedEvent) -> None:
         """Push and pop so span is a leaf."""
-        self._push_span(f"On merge rejected: [{event['iteration']}]", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On merge rejected: [{it}]", **event)
         self._pop_span()
 
     # =========================================================================
@@ -288,17 +329,20 @@ class LogfireSpanCallback:
 
     def on_pareto_front_updated(self, event: ParetoFrontUpdatedEvent) -> None:
         """Push and pop so span is a leaf."""
-        self._push_span(f"On pareto front updated: [{event['iteration']}])", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On pareto front updated: [{it}]", **event)
         self._pop_span()
 
     def on_state_saved(self, event: StateSavedEvent) -> None:
         """Push and pop so span is nested under parent with no children."""
-        self._push_span(f"On state saved: [{event['iteration']}][{event['run_dir']}]", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On state saved: [{it}][{event['run_dir']}]", **event)
         self._pop_span()
 
     def on_training_start(self, event: TrainingStartEvent) -> None:
         """Training/proposal phase of iteration."""
-        self._push_span(f"On training start: {event['iteration']}", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On training start: {it}", **event)
 
     def on_training_end(self, event: TrainingEndEvent) -> None:
         """End of training/proposal phase."""
@@ -310,13 +354,26 @@ class LogfireSpanCallback:
 
     def on_budget_updated(self, event: BudgetUpdatedEvent) -> None:
         """Push and pop so budget update is a leaf (completion/candidate_rejected don't nest under it)."""
-        used = event.get("metric_calls_used", 0)
+        used = int(event.get("metric_calls_used", 0))
         remaining = event.get("metric_calls_remaining")
-        total = used + (remaining or 0)
-        label = f"{used}/{total}" if total else f"{used}/?"
+        it = self._format_iteration_index(int(event["iteration"]))
+        m_cap = event.get("max_metric_calls_cap")
+        if m_cap is None:
+            m_cap = self._metric_cap
+        # ``metric_calls_*`` = cumulative evaluator invocations (train minibatches, val passes, etc.),
+        # not ``valset_size`` and not the same as ``max_candidate_proposals``.
+        if remaining is None or m_cap is None:
+            eval_line = f"total_evals={used} (no max_metric_calls cap)"
+        else:
+            eval_line = f"total_evals={used}/{m_cap}"
+        span_attrs = {k: v for k, v in event.items() if v is not None}
+        span_attrs["eval_budget_semantics"] = (
+            "total_evals counts every evaluation the adapter runs (training minibatch rollouts, "
+            "full valset passes, re-checks). It is unrelated to valset_size alone."
+        )
         self._push_span(
-            f"On budget updated: [{event['iteration']}][{label}]",
-            **event,
+            f"On budget updated: iter {it} · {eval_line}",
+            **span_attrs,
         )
         self._pop_span()
 
@@ -355,5 +412,6 @@ class LogfireSpanCallback:
 
     def on_error(self, event: ErrorEvent) -> None:
         """Push and pop so span is a leaf."""
-        self._push_span(f"On error: [{event['iteration']}][{event['exception']}]", **event)
+        it = self._format_iteration_index(int(event["iteration"]))
+        self._push_span(f"On error: [{it}][{event['exception']}]", **event)
         self._pop_span()

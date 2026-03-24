@@ -84,12 +84,16 @@ class LM:
         else:
             messages = prompt
 
+        call_kwargs = dict(self.completion_kwargs)
+        # Explicitly disable provider-side built-in tools/citations when not requested.
+        call_kwargs.setdefault("tools", [])
+
         completion = litellm.completion(
             model=self.model,
             messages=messages,
             num_retries=self.num_retries,
             drop_params=True,
-            **self.completion_kwargs,
+            **call_kwargs,
         )
 
         if self.raw_io_phase:
@@ -132,6 +136,7 @@ class LM:
         import litellm
 
         merged = {**self.completion_kwargs, **kwargs}
+        merged.setdefault("tools", [])
         responses = litellm.batch_completion(
             model=self.model,
             messages=messages_list,

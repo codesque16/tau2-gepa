@@ -64,6 +64,57 @@ DIAGNOSIS_PROMPT_PLACEHOLDERS = frozenset(
 
 GEPA_GENERATED_OPEN = "<gepa_generated>"
 
+# Markers embedded in the optimizer / evaluator prompt templates so our GEPA
+# LM wrappers can build proper "system" + "first user message" requests.
+GEPA_SYSTEM_PROMPT_OPEN = "<gepa_system_prompt>"
+GEPA_SYSTEM_PROMPT_CLOSE = "</gepa_system_prompt>"
+GEPA_FIRST_USER_MESSAGE_OPEN = "<gepa_first_user_message>"
+GEPA_FIRST_USER_MESSAGE_CLOSE = "</gepa_first_user_message>"
+
+
+def _split_system_prompt_and_first_user_message(block: str, *, section: str) -> tuple[str, str]:
+    """
+    Split a fenced-block template into:
+      - system prompt text (from "### System Prompt" subsection)
+      - first user message template text (from "### First User Message Template" subsection)
+
+    If the expected subsections are not found, we fall back to the entire block
+    being treated as the first user message template and the system prompt as empty.
+    """
+    text = block or ""
+    if not text.strip():
+        return "", ""
+
+    sys_re = re.compile(r"^###\s*System\s*Prompt\s*$", flags=re.IGNORECASE | re.MULTILINE)
+    user_re = re.compile(
+        r"^###\s*First\s*User\s*Message\s*(Template)?\s*$",
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+
+    sys_m = sys_re.search(text)
+    user_m = user_re.search(text)
+    if not user_m:
+        # Backward compatible: treat whole block as user message.
+        return "", text.strip()
+
+    user_text = text[user_m.end() :].strip()
+    if not sys_m:
+        return "", user_text
+
+    system_text = text[sys_m.end() : user_m.start()].strip()
+    return system_text, user_text
+
+
+def _wrap_system_and_first_user_message(system_prompt: str, user_template: str) -> str:
+    system_prompt = system_prompt or ""
+    user_template = user_template or ""
+    return "\n\n".join(
+        [
+            f"{GEPA_SYSTEM_PROMPT_OPEN}\n{system_prompt.strip()}\n{GEPA_SYSTEM_PROMPT_CLOSE}",
+            f"{GEPA_FIRST_USER_MESSAGE_OPEN}\n{user_template.strip()}\n{GEPA_FIRST_USER_MESSAGE_CLOSE}",
+        ]
+    )
+
 
 @dataclass(frozen=True)
 class ReflectionPromptsBundle:
@@ -149,6 +200,23 @@ def parse_reflection_prompts_markdown(text: str) -> ReflectionPromptsBundle:
             "Markdown must contain # Objective and # Background sections, each followed by a ``` fenced block. "
             f"Missing: {', '.join(missing)}; found: {got}."
         )
+
+    # Convert the # Optimizer / # Evaluator fenced blocks into a single template string
+    # that embeds system + first user-message parts with explicit tags.
+    optimizer_block = found.get("optimizer")
+    if isinstance(optimizer_block, str) and optimizer_block.strip():
+        sys_txt, user_txt = _split_system_prompt_and_first_user_message(
+            optimizer_block, section="Optimizer"
+        )
+        found["optimizer"] = _wrap_system_and_first_user_message(sys_txt, user_txt)
+
+    evaluator_block = found.get("evaluator")
+    if isinstance(evaluator_block, str) and evaluator_block.strip():
+        sys_txt, user_txt = _split_system_prompt_and_first_user_message(
+            evaluator_block, section="Evaluator"
+        )
+        found["evaluator"] = _wrap_system_and_first_user_message(sys_txt, user_txt)
+
     return ReflectionPromptsBundle(
         objective=found["objective"],
         background=found["background"],

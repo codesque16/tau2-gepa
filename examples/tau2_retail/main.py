@@ -21,7 +21,7 @@ Usage:
   uv run python -m examples.tau2_retail.main --reflection-prompts-file path/to/prompts.md
   uv run python -m examples.tau2_retail.main --fresh --seed-candidate-file path/to/seed.md
   uv run python -m examples.tau2_retail.main   # default seed: tau2 retail policy_solo.md; prompts: reflection_prompts.md
-  uv run python -m examples.tau2_retail.main --run-dir outputs/tau2_retail_03-18_13-11
+  uv run python -m examples.tau2_retail.main --run-dir outputs/tau2_retail_03-18_13-11-45
 """
 
 import argparse
@@ -93,7 +93,7 @@ def main():
     parser.add_argument(
         "--fresh",
         action="store_true",
-        help="Create a fresh run directory with timestamp (outputs/tau2_retail_MM-DD_HH-MM)",
+        help="Create a fresh run directory with timestamp (outputs/tau2_retail_MM-DD_HH-MM-SS)",
     )
     parser.add_argument(
         "--run-dir",
@@ -161,7 +161,7 @@ def main():
         log_dir = args.run_dir
         print(f"Resuming from: {log_dir}")
     elif args.fresh:
-        timestamp = datetime.now().strftime("%m-%d_%H-%M")
+        timestamp = datetime.now().strftime("%m-%d_%H-%M-%S")
         log_dir = f"{base_dir}_{timestamp}"
         print(f"Fresh run: {log_dir}")
     else:

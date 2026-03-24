@@ -9,7 +9,6 @@ from typing import Any, Generic
 from gepa.core.adapter import DataInst, GEPAAdapter, RolloutOutput, Trajectory
 from gepa.core.callbacks import (
     BudgetExhaustedEvent,
-    BudgetUpdatedEvent,
     CandidateAcceptedEvent,
     CandidateRejectedEvent,
     ErrorEvent,
@@ -46,6 +45,24 @@ try:
     from tqdm import tqdm
 except ImportError:
     tqdm = None
+
+
+def _extract_stopper_budget_caps(stop_cb: StopperProtocol | None) -> tuple[int | None, int | None]:
+    """Read ``MaxMetricCallsStopper.max_metric_calls`` and ``MaxCandidateProposalsStopper.max_proposals``."""
+    max_metric: int | None = None
+    max_proposals: int | None = None
+    if stop_cb is None:
+        return max_metric, max_proposals
+    stoppers = getattr(stop_cb, "stoppers", None)
+    seq: list[Any] = list(stoppers) if stoppers is not None else [stop_cb]
+    for s in seq:
+        mc = getattr(s, "max_metric_calls", None)
+        if type(mc) is int:
+            max_metric = mc
+        mp = getattr(s, "max_proposals", None)
+        if type(mp) is int:
+            max_proposals = mp
+    return max_metric, max_proposals
 
 
 class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
@@ -97,6 +114,9 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
 
         # Set up stopping mechanism
         self.stop_callback = stop_callback
+        self._max_metric_calls_budget, self._max_proposal_iterations_cap = _extract_stopper_budget_caps(
+            stop_callback
+        )
         self.adapter = adapter
 
         # Store cache reference for state initialization (actual cache lives in GEPAState)
@@ -356,6 +376,8 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     "seed_candidate_file": self.seed_candidate_file,
                     "reflection_prompts_file": self.reflection_prompts_file,
                     "gepa_template_file": self.gepa_template_file,
+                    "max_metric_calls_budget": self._max_metric_calls_budget,
+                    "max_candidate_proposals_cap": self._max_proposal_iterations_cap,
                 },
             ),
         )
@@ -397,6 +419,8 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                 "val_evaluation_policy": type(self.val_evaluation_policy).__name__,
                 "has_merge_proposer": self.merge_proposer is not None,
                 "run_dir": self.run_dir,
+                "max_metric_calls_budget": self._max_metric_calls_budget,
+                "max_candidate_proposals_cap": self._max_proposal_iterations_cap,
             }
         )
 
@@ -447,16 +471,15 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
 
         # Register budget hook to fire on_budget_updated callback in real-time
         def budget_hook(new_total: int, delta: int) -> None:
-            notify_callbacks(
-                self.callbacks,
-                "on_budget_updated",
-                BudgetUpdatedEvent(
-                    iteration=state.i + 1,
-                    metric_calls_used=new_total,
-                    metric_calls_delta=delta,
-                    metric_calls_remaining=self._get_remaining_budget(state),
-                ),
-            )
+            budget_event: dict[str, Any] = {
+                "iteration": state.i + 1,
+                "metric_calls_used": new_total,
+                "metric_calls_delta": delta,
+                "metric_calls_remaining": self._get_remaining_budget(state),
+                "max_metric_calls_cap": self._max_metric_calls_budget,
+                "max_proposal_iterations_cap": self._max_proposal_iterations_cap,
+            }
+            notify_callbacks(self.callbacks, "on_budget_updated", budget_event)
 
         state.add_budget_hook(budget_hook)
 

@@ -110,6 +110,22 @@ def _normalize_gepa_optimization_mode(raw: str | None) -> str:
     return out
 
 
+def _parse_max_metric_calls(gepa: dict[str, Any]) -> int | None:
+    """YAML ``max_metric_calls``: omitted → 200 (this entrypoint’s legacy default); ``null`` → no cap.
+
+    Using ``gepa.get("max_metric_calls") or 200`` is wrong: explicit YAML ``null`` is falsy and would
+    incorrectly become 200 (same bug class as :func:`domains.retail.run_gepa_optimize._parse_max_metric_calls`).
+    """
+    if "max_metric_calls" not in gepa:
+        return 200
+    raw = gepa["max_metric_calls"]
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError("gepa.max_metric_calls must be an integer or null, not a boolean")
+    return int(raw)
+
+
 def _resolve_reflection_prompts(
     path_arg: str | None,
 ) -> tuple[str, str, str | None, str | None, str | None]:
@@ -250,7 +266,7 @@ def main() -> None:
         log_dir = str(_resolve_repo_path(repo_root, str(gepa["run_dir"])))
         print(f"Using gepa.run_dir: {log_dir}")
     elif fresh:
-        log_dir = f"{out_base.rstrip('/')}_{datetime.now().strftime('%m-%d_%H-%M')}"
+        log_dir = f"{out_base.rstrip('/')}_{datetime.now().strftime('%m-%d_%H-%M-%S')}"
         print(f"Fresh run: {log_dir}")
     else:
         log_dir = out_base
@@ -359,7 +375,7 @@ def main() -> None:
             "failed-task diagnosis will not use that template.",
             file=sys.stderr,
         )
-    max_metric = int(gepa.get("max_metric_calls") or 200)
+    max_metric = _parse_max_metric_calls(gepa)
     max_workers = max(1, int(gepa.get("max_workers") or 2))
     rfmt = str(gepa.get("reflective_dataset_format") or "tau2_retail").lower()
     if rfmt not in ("default", "tau2_retail"):

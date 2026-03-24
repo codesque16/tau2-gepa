@@ -283,7 +283,14 @@ class StateSavedEvent(TypedDict):
 
 
 class BudgetUpdatedEvent(TypedDict):
-    """Event for on_budget_updated callback."""
+    """Event for on_budget_updated callback.
+
+    ``metric_calls_*`` fields count **all** adapter evaluations (training minibatches, valset passes,
+    etc.), not ``valset_size`` alone.
+
+    Optional keys (when the engine provides them): ``max_metric_calls_cap``,
+    ``max_proposal_iterations_cap`` (same as ``max_candidate_proposals`` stopper).
+    """
 
     iteration: int
     metric_calls_used: int
