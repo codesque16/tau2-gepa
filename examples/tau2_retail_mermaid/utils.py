@@ -198,6 +198,7 @@ def _run_gepa_eval_diagnosis(
     diagnosis_genai_max_output_tokens: int | None = None,
     diagnosis_genai_reasoning_effort: str | None = None,
     mcp_command: str,
+    tools_markdown_path: str | None,
     ticket_text: str,
     policy_text: str,
     task: dict[str, Any],
@@ -224,7 +225,10 @@ def _run_gepa_eval_diagnosis(
         evaluate_communication=evaluate_communication,
     )
     trace = format_openai_style_history_dicts(assistant_history) or "(empty conversation)"
-    tools_list = retail_tools_list_for_gepa_diagnosis(mcp_command=mcp_command)
+    tools_list = retail_tools_list_for_gepa_diagnosis(
+        mcp_command=mcp_command,
+        tools_markdown_path=tools_markdown_path,
+    )
 
     def _call() -> str:
         return diagnose_single_retail_failure_for_gepa(
@@ -309,6 +313,7 @@ def evaluate_policy_with_mermaid_agent(
     )
 
     assistant_mcps = getattr(sim_cfg.assistant, "mcps", None) or []
+    tools_markdown_path = (getattr(sim_cfg.assistant, "mcp_tools_markdown_path", None) or "").strip() or None
     mcp_command = ""
     for server_cfg in assistant_mcps:
         if server_cfg.get("name") == "retail-tools" or not mcp_command:
@@ -384,6 +389,7 @@ def evaluate_policy_with_mermaid_agent(
                     diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
                     diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
                     mcp_command=mcp_command,
+                    tools_markdown_path=tools_markdown_path,
                     ticket_text=(task.get("ticket") or "")[:8000],
                     policy_text=policy_text,
                     task=task,
@@ -415,6 +421,7 @@ def evaluate_policy_with_mermaid_agent(
                 diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
                 diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
                 mcp_command=mcp_command,
+                tools_markdown_path=tools_markdown_path,
                 ticket_text=(task.get("ticket") or "")[:8000],
                 policy_text=policy_text,
                 task=task,

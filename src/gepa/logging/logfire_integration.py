@@ -23,6 +23,7 @@ from gepa.core.callbacks import (
     EvaluationStartEvent,
     IterationEndEvent,
     IterationStartEvent,
+    IterationsCompletedEvent,
     MergeAcceptedEvent,
     MergeAttemptedEvent,
     MergeRejectedEvent,
@@ -268,7 +269,27 @@ class LogfireSpanCallback:
         """Pop reflection span, then push/pop proposal end so nothing nests under it."""
         self._pop_span()  # On reflection (proposal start)
         it = self._format_iteration_index(int(event["iteration"]))
-        self._push_span(f"On proposal end: [{it}]", **event)
+        parent_candidate_idx = event.get("parent_candidate_idx")
+        parent_candidate = event.get("parent_candidate") or {}
+        prompt_text = (
+            parent_candidate.get("prompt")
+            or parent_candidate.get("instructions")
+            or parent_candidate.get("instruction")
+            or parent_candidate.get("content")
+            or ""
+        )
+        if not prompt_text and isinstance(parent_candidate, dict) and parent_candidate:
+            prompt_text = "\n\n".join(f"{k}: {v}" for k, v in sorted(parent_candidate.items()))
+        if isinstance(prompt_text, str) and len(prompt_text) > 8000:
+            prompt_text = prompt_text[:8000] + "\n\n...[truncated]"
+        idx_label = str(parent_candidate_idx) if parent_candidate_idx is not None else "none"
+        self._push_span(
+            f"On proposal end: [{it}][prompt_selected_to_mutate_idx: {idx_label}]",
+            parent_candidate_selected_idx=parent_candidate_idx,
+            prompt_selected_to_mutate_idx=parent_candidate_idx,
+            prompt_selected_to_mutate=prompt_text,
+            **event,
+        )
         self._pop_span()
 
     # =========================================================================
@@ -401,6 +422,37 @@ class LogfireSpanCallback:
             best_score_on_valset=best_score,
             total_metric_calls=event["total_metric_calls"],
             total_iterations=event["total_iterations"],
+            pareto_front_program_ids=pareto_ids,
+            per_program_best_val_scores=per_prog,
+        )
+        self._pop_span()
+
+    def on_iterations_completed(self, event: IterationsCompletedEvent) -> None:
+        """Log seed, best candidate, and all Pareto frontier programs when iteration cap is reached."""
+        best_idx = event["best_candidate_idx"]
+        best_score = event["best_score_on_valset"]
+        cap = event["max_candidate_proposals_cap"]
+        pareto_ids = event["pareto_front_program_ids"]
+        per_prog = event["per_program_best_val_scores"]
+        summary_parts = [
+            f"iterations={event['total_iterations']}/{cap}",
+            f"best_candidate_idx={best_idx} best_score={best_score:.2f}",
+            f"pareto_programs={pareto_ids}",
+        ]
+        for prog_idx in pareto_ids:
+            scores = per_prog.get(prog_idx, {})
+            n = len(scores)
+            avg = sum(scores.values()) / n if n else 0.0
+            summary_parts.append(f"P{prog_idx}: best_on_{n}_vals avg={avg:.2f}")
+        self._push_span(
+            "On iterations completed: " + " | ".join(summary_parts),
+            seed_candidate=event["seed_candidate"],
+            best_candidate=event["best_candidate"],
+            best_candidate_idx=best_idx,
+            best_score_on_valset=best_score,
+            total_metric_calls=event["total_metric_calls"],
+            total_iterations=event["total_iterations"],
+            max_candidate_proposals_cap=cap,
             pareto_front_program_ids=pareto_ids,
             per_program_best_val_scores=per_prog,
         )

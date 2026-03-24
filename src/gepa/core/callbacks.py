@@ -83,6 +83,20 @@ class BudgetExhaustedEvent(TypedDict):
     per_program_best_val_scores: dict[int, dict[Any, float]]
 
 
+class IterationsCompletedEvent(TypedDict):
+    """Event for on_iterations_completed callback (when iteration cap is reached)."""
+
+    seed_candidate: dict[str, str]
+    best_candidate: dict[str, str]
+    best_candidate_idx: int
+    best_score_on_valset: float
+    total_metric_calls: int
+    total_iterations: int
+    max_candidate_proposals_cap: int
+    pareto_front_program_ids: list[int]
+    per_program_best_val_scores: dict[int, dict[Any, float]]
+
+
 class IterationStartEvent(TypedDict):
     """Event for on_iteration_start callback."""
 
@@ -170,16 +184,19 @@ class ProposalStartEvent(TypedDict):
     """Event for on_proposal_start callback."""
 
     iteration: int
+    parent_candidate_idx: int | None
     parent_candidate: dict[str, str]
     components: list[str]
     reflective_dataset: dict[str, list[dict[str, Any]]]
 
 
-class ProposalEndEvent(TypedDict):
+class ProposalEndEvent(TypedDict, total=False):
     """Event for on_proposal_end callback."""
 
     iteration: int
     new_instructions: dict[str, str]
+    parent_candidate_idx: int | None
+    parent_candidate: dict[str, str]
     prompts: dict[str, str | list[dict[str, Any]]]
     """Per-component prompts sent to the reflection LM (component name → rendered prompt)."""
     raw_lm_outputs: dict[str, str]
@@ -454,6 +471,10 @@ class GEPACallback(Protocol):
         """
         ...
 
+    def on_iterations_completed(self, event: IterationsCompletedEvent) -> None:
+        """Called when the run ends because max proposal iterations is reached."""
+        ...
+
     # =========================================================================
     # Error Handling
     # =========================================================================
@@ -595,6 +616,9 @@ class CompositeCallback:
 
     def on_budget_exhausted(self, event: BudgetExhaustedEvent) -> None:
         self._notify("on_budget_exhausted", event)
+
+    def on_iterations_completed(self, event: IterationsCompletedEvent) -> None:
+        self._notify("on_iterations_completed", event)
 
     def on_error(self, event: ErrorEvent) -> None:
         self._notify("on_error", event)

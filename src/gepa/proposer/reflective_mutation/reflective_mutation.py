@@ -337,6 +337,7 @@ class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
                 "on_proposal_start",
                 ProposalStartEvent(
                     iteration=i,
+                    parent_candidate_idx=curr_prog_id,
                     parent_candidate=curr_prog,
                     components=predictor_names_to_update,
                     reflective_dataset=reflective_dataset_concrete,

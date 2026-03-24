@@ -12,6 +12,7 @@ from gepa.core.callbacks import (
     CandidateAcceptedEvent,
     CandidateRejectedEvent,
     ErrorEvent,
+    IterationsCompletedEvent,
     GEPACallback,
     IterationEndEvent,
     IterationStartEvent,
@@ -625,6 +626,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     "on_proposal_start",
                     {
                         "iteration": state.i + 1,
+                        "parent_candidate_idx": None,
                         "parent_candidate": state.program_candidates[0] if state.program_candidates else {},
                         "components": [],
                         "reflective_dataset": {},
@@ -638,6 +640,10 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                         {
                             "iteration": state.i + 1,
                             "new_instructions": {},
+                            "parent_candidate_idx": None,
+                            "parent_candidate": {},
+                            "prompts": {},
+                            "raw_lm_outputs": {},
                         },
                     )
                     notify_callbacks(
@@ -672,6 +678,16 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                         {
                             "iteration": state.i + 1,
                             "new_instructions": proposal.candidate,
+                            "parent_candidate_idx": proposal.parent_program_ids[0]
+                            if proposal.parent_program_ids
+                            else None,
+                            "parent_candidate": (
+                                state.program_candidates[proposal.parent_program_ids[0]]
+                                if proposal.parent_program_ids
+                                else {}
+                            ),
+                            "prompts": {},
+                            "raw_lm_outputs": {},
                         },
                     )
                     notify_callbacks(
@@ -692,6 +708,16 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     {
                         "iteration": state.i + 1,
                         "new_instructions": proposal.candidate,
+                        "parent_candidate_idx": proposal.parent_program_ids[0]
+                        if proposal.parent_program_ids
+                        else None,
+                        "parent_candidate": (
+                            state.program_candidates[proposal.parent_program_ids[0]]
+                            if proposal.parent_program_ids
+                            else {}
+                        ),
+                        "prompts": {},
+                        "raw_lm_outputs": {},
                     },
                 )
                 notify_callbacks(
@@ -790,21 +816,22 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
 
         # When budget is exhausted, notify so callbacks can log seed, best, and Pareto frontier
         remaining = self._get_remaining_budget(state)
+        pareto_program_ids: set[int] = set()
+        for prog_set in state.program_at_pareto_front_valset.values():
+            pareto_program_ids.update(prog_set)
+        per_program_best_val_scores: dict[int, dict[DataId, float]] = {}
+        for prog_idx in pareto_program_ids:
+            scores_on_best: dict[DataId, float] = {}
+            for val_id, front in state.program_at_pareto_front_valset.items():
+                if prog_idx in front:
+                    sc = state.prog_candidate_val_subscores[prog_idx].get(val_id)
+                    if sc is not None:
+                        scores_on_best[val_id] = sc
+                    elif val_id in state.pareto_front_valset:
+                        scores_on_best[val_id] = state.pareto_front_valset[val_id]
+            per_program_best_val_scores[prog_idx] = scores_on_best
+
         if remaining is not None and remaining == 0:
-            pareto_program_ids: set[int] = set()
-            for prog_set in state.program_at_pareto_front_valset.values():
-                pareto_program_ids.update(prog_set)
-            per_program_best_val_scores: dict[int, dict[DataId, float]] = {}
-            for prog_idx in pareto_program_ids:
-                scores_on_best: dict[DataId, float] = {}
-                for val_id, front in state.program_at_pareto_front_valset.items():
-                    if prog_idx in front:
-                        sc = state.prog_candidate_val_subscores[prog_idx].get(val_id)
-                        if sc is not None:
-                            scores_on_best[val_id] = sc
-                        elif val_id in state.pareto_front_valset:
-                            scores_on_best[val_id] = state.pareto_front_valset[val_id]
-                per_program_best_val_scores[prog_idx] = scores_on_best
             notify_callbacks(
                 self.callbacks,
                 "on_budget_exhausted",
@@ -815,6 +842,25 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     best_score_on_valset=best_score,
                     total_metric_calls=state.total_num_evals,
                     total_iterations=state.i,
+                    pareto_front_program_ids=sorted(pareto_program_ids),
+                    per_program_best_val_scores=per_program_best_val_scores,
+                ),
+            )
+        elif (
+            self._max_proposal_iterations_cap is not None
+            and state.i >= self._max_proposal_iterations_cap
+        ):
+            notify_callbacks(
+                self.callbacks,
+                "on_iterations_completed",
+                IterationsCompletedEvent(
+                    seed_candidate=dict(self.seed_candidate),
+                    best_candidate=dict(best_candidate),
+                    best_candidate_idx=best_candidate_idx,
+                    best_score_on_valset=best_score,
+                    total_metric_calls=state.total_num_evals,
+                    total_iterations=state.i,
+                    max_candidate_proposals_cap=self._max_proposal_iterations_cap,
                     pareto_front_program_ids=sorted(pareto_program_ids),
                     per_program_best_val_scores=per_program_best_val_scores,
                 ),

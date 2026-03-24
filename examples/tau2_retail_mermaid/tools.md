@@ -1,8 +1,4 @@
-# Retail MCP tools (reference)
-
-Text below is taken from `domains/retail/tools.py` docstrings: parameters, return types, raises, and behavioral caveats. It does **not** include SOP or when-to-escalate policy. Paste into a `<tools_list>` block as needed.
-
-Eval-only tools (`get_db_hash`, `get_db_json`) are not listed here; they are for offline evaluators, not customer-facing agent policy.
+# Available tools
 
 ---
 
