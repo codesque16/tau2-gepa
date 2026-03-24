@@ -431,11 +431,15 @@ class LogfireSpanCallback:
         """Log seed, best candidate, and all Pareto frontier programs when iteration cap is reached."""
         best_idx = event["best_candidate_idx"]
         best_score = event["best_score_on_valset"]
-        cap = event["max_candidate_proposals_cap"]
+        cap = event.get("max_candidate_proposals_cap")
         pareto_ids = event["pareto_front_program_ids"]
         per_prog = event["per_program_best_val_scores"]
         summary_parts = [
-            f"iterations={event['total_iterations']}/{cap}",
+            (
+                f"iterations={event['total_iterations']}/{cap}"
+                if cap is not None
+                else f"iterations={event['total_iterations']}"
+            ),
             f"best_candidate_idx={best_idx} best_score={best_score:.2f}",
             f"pareto_programs={pareto_ids}",
         ]
@@ -452,7 +456,6 @@ class LogfireSpanCallback:
             best_score_on_valset=best_score,
             total_metric_calls=event["total_metric_calls"],
             total_iterations=event["total_iterations"],
-            max_candidate_proposals_cap=cap,
             pareto_front_program_ids=pareto_ids,
             per_program_best_val_scores=per_prog,
         )

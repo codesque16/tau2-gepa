@@ -813,6 +813,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         best_candidate_idx = self.val_evaluation_policy.get_best_program(state)
         best_candidate = state.program_candidates[best_candidate_idx]
         best_score = self.val_evaluation_policy.get_valset_score(best_candidate_idx, state)
+        completed_iterations = max(0, state.i + 1)
 
         # When budget is exhausted, notify so callbacks can log seed, best, and Pareto frontier
         remaining = self._get_remaining_budget(state)
@@ -841,14 +842,14 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     best_candidate_idx=best_candidate_idx,
                     best_score_on_valset=best_score,
                     total_metric_calls=state.total_num_evals,
-                    total_iterations=state.i,
+                    total_iterations=completed_iterations,
                     pareto_front_program_ids=sorted(pareto_program_ids),
                     per_program_best_val_scores=per_program_best_val_scores,
                 ),
             )
         elif (
             self._max_proposal_iterations_cap is not None
-            and state.i >= self._max_proposal_iterations_cap
+            and state.i >= (self._max_proposal_iterations_cap - 1)
         ):
             notify_callbacks(
                 self.callbacks,
@@ -859,7 +860,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     best_candidate_idx=best_candidate_idx,
                     best_score_on_valset=best_score,
                     total_metric_calls=state.total_num_evals,
-                    total_iterations=state.i,
+                    total_iterations=completed_iterations,
                     max_candidate_proposals_cap=self._max_proposal_iterations_cap,
                     pareto_front_program_ids=sorted(pareto_program_ids),
                     per_program_best_val_scores=per_program_best_val_scores,
@@ -872,7 +873,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
             "on_optimization_end",
             OptimizationEndEvent(
                 best_candidate_idx=best_candidate_idx,
-                total_iterations=state.i,
+                total_iterations=completed_iterations,
                 total_metric_calls=state.total_num_evals,
                 final_state=state,
             ),
@@ -882,7 +883,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
         summary: dict[str, Any] = {
             "best_candidate_idx": best_candidate_idx,
             "best_valset_score": best_score,
-            "total_iterations": state.i,
+            "total_iterations": completed_iterations,
             "total_candidates": len(state.program_candidates),
         }
         for name in sorted(self.seed_candidate.keys()):
