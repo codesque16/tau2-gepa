@@ -1,0 +1,46 @@
+# Publishes only the static run output viewer (examples/run_output_viewer/).
+# No Jekyll / MkDocs — avoids blog front matter (e.g. date.created) breaking the old Pages Jekyll flow.
+#
+# GitHub repo Settings → Pages → Build and deployment: source must be "GitHub Actions".
+# If you still see a workflow using actions/jekyll-build-pages, remove it under Actions →
+# workflows, or delete .github/workflows/pages.yml (or similar) so only this job deploys.
+
+name: Deploy run output viewer to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: examples/run_output_viewer
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

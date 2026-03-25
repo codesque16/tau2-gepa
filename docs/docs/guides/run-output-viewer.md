@@ -1,40 +1,38 @@
-# Local run output viewer
+# GEPA run output viewer
 
-The published site [gepa-ai.github.io/gepa](https://gepa-ai.github.io/gepa/) documents the GEPA library. It **cannot** read folders on your machine (browser security), so browsing `outputs/` from GitHub Pages is not possible.
+Static app under **`examples/run_output_viewer/`** (`index.html`, `app.js`): pick a run, read `best_policy.md`, embed `candidate_tree.html`, compare candidates (plain or highlighted diff).
 
-To inspect GEPA runs (for example `outputs/tau2_retail_mermaid_…/`), use the **static viewer** shipped in this repo:
+Full instructions: **`examples/run_output_viewer/README.md`** at the repository root.
 
-- Path: `gepa/examples/run_output_viewer/`
-- Files: `index.html`, `app.js`
+## GitHub Pages (viewer only)
 
-## Setup
+Workflow **Deploy run output viewer to GitHub Pages** uploads **only** `examples/run_output_viewer/` — no Jekyll/MkDocs build.
 
-1. From the **repository root** (the parent of `outputs/` and `gepa/`), start any static HTTP server, for example:
+1. **Settings → Pages**: **Source** = **GitHub Actions**.
+2. Remove workflows using **`actions/jekyll-build-pages`** if present.
+3. URL: **`https://<user>.github.io/<repo>/`**
 
-   ```bash
-   python -m http.server 8000
-   ```
+To populate the run dropdown on Pages, commit `outputs/manifest.json` (and usually run folders) under `outputs/`; see the README above.
 
-2. Generate a manifest of run folders (any directory under `outputs/` that contains `best_policy.md`, `candidate_tree.html`, or `candidates.json`):
+## Local use
 
-   ```bash
-   uv run python gepa/examples/run_output_viewer/gen_outputs_manifest.py
-   ```
+From repo root (with `outputs/` beside `examples/`):
 
-   (Some monorepos also provide `scripts/gen_outputs_manifest.py` at the repository root — either script writes `outputs/manifest.json`.) Re-run when you add new runs.
+```bash
+python -m http.server 8000
+```
 
-3. Open in a browser:
+Open `http://localhost:8000/examples/run_output_viewer/index.html`.
 
-   ```text
-   http://localhost:8000/gepa/examples/run_output_viewer/index.html
-   ```
+```bash
+uv run python examples/run_output_viewer/gen_outputs_manifest.py
+```
+
+Monorepo paths: prefix with `gepa/` where this project lives inside a larger repo.
 
 ## Features
 
-- **Run** dropdown — populated from `outputs/manifest.json`.
-- **best_policy.md** — Markdown preview (with Mermaid rendering where fenced blocks use `mermaid`) or raw source; **Copy markdown** button.
-- **candidate_tree.html** — embedded in an iframe when present for the selected run.
-- **Compare candidates** tab — left/right selects from `candidates.json` order; **Plain** shows two text panes, **Highlighted diff** renders a [diff2html](https://github.com/rtfpessoa/diff2html) side-by-side view (red/green line highlights, same idea as [Diffchecker](https://www.diffchecker.com/)).  
-  When the tree is embedded, open a node’s tooltip and use **Left pane** / **Right pane** to send that candidate index to the parent viewer (via `postMessage`).
-
-Newly generated `candidate_tree.html` files include those buttons when the page is loaded inside an iframe.
+- **Run** list from `outputs/manifest.json`
+- **best_policy.md** — preview / raw / copy; Mermaid in fenced `mermaid` blocks
+- **candidate_tree.html** in an iframe when present
+- **Compare** — idx selects from `candidates.json`; **Highlighted diff** via [diff2html](https://github.com/rtfpessoa/diff2html); tree tooltips can **Left/Right pane** into the parent when embedded (`postMessage`)

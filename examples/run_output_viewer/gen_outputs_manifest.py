@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Write outputs/manifest.json at the repo root (parent of gepa/).
+"""Write outputs/manifest.json next to your outputs/ directory at the repo root.
 
-Run from anywhere:
+Run from repo root (standalone fork):
+  uv run python examples/run_output_viewer/gen_outputs_manifest.py
+
+Monorepo (gepa nested):
   uv run python gepa/examples/run_output_viewer/gen_outputs_manifest.py
-
-Same logic as scripts/gen_outputs_manifest.py in layouts where that file exists.
 """
 
 from __future__ import annotations
@@ -14,9 +15,17 @@ import sys
 from pathlib import Path
 
 
+def _repo_root() -> Path:
+    here = Path(__file__).resolve().parent
+    examples_dir = here.parent
+    parent_of_examples = examples_dir.parent
+    if parent_of_examples.name == "gepa":
+        return parent_of_examples.parent
+    return parent_of_examples
+
+
 def main() -> int:
-    # .../gepa/examples/run_output_viewer/this_file.py -> repo root is parents[3]
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = _repo_root()
     out_dir = repo_root / "outputs"
     if not out_dir.is_dir():
         print(f"Missing outputs directory: {out_dir}", file=sys.stderr)

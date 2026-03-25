@@ -11,7 +11,8 @@
   <a href="https://gepa-ai.github.io/gepa/guides/quickstart/"><strong>Quick Start</strong></a> &ensp;|&ensp;
   <a href="https://arxiv.org/abs/2507.19457"><strong>Paper</strong></a> &ensp;|&ensp;
   <a href="https://gepa-ai.github.io/gepa/blog/"><strong>Blog</strong></a> &ensp;|&ensp;
-  <a href="https://discord.gg/WXFSeVGdbW"><strong>Discord</strong></a>
+  <a href="https://discord.gg/WXFSeVGdbW"><strong>Discord</strong></a> &ensp;|&ensp;
+  <a href="examples/run_output_viewer/README.md"><strong>Run viewer (Pages)</strong></a>
 </p>
 
 <p align="center">

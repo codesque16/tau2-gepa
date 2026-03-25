@@ -1,7 +1,9 @@
 /**
- * Local GEPA outputs browser. Serve repo root, then open:
- *   http://localhost:8000/gepa/examples/run_output_viewer/index.html
- * Generate outputs/manifest.json:  uv run python gepa/examples/run_output_viewer/gen_outputs_manifest.py
+ * GEPA run outputs browser.
+ * Local (monorepo): http://localhost:8000/gepa/examples/run_output_viewer/index.html
+ * Local (standalone fork): http://localhost:8000/examples/run_output_viewer/index.html
+ * GitHub Pages: https://<user>.github.io/<repo>/
+ * Manifest: uv run python examples/run_output_viewer/gen_outputs_manifest.py (from fork root)
  */
 
 const marked = globalThis.marked;
@@ -11,8 +13,14 @@ function repoRootPrefix() {
   let p = window.location.pathname;
   p = p.replace(/\/index\.html?$/i, "");
   p = p.replace(/\/+$/, "");
-  const suffix = "/gepa/examples/run_output_viewer";
-  if (p.endsWith(suffix)) return p.slice(0, -suffix.length) || "";
+  const monorepoViewer = "/gepa/examples/run_output_viewer";
+  if (p.endsWith(monorepoViewer)) {
+    const root = p.slice(0, -monorepoViewer.length);
+    return root === "" ? "" : root;
+  }
+  // Viewer is the whole site (GitHub Pages project page: /repo/ or /repo/index.html)
+  const segs = p.split("/").filter(Boolean);
+  if (segs.length >= 1) return `/${segs[0]}`;
   return "";
 }
 
@@ -251,7 +259,7 @@ async function loadManifest() {
   const res = await fetch(url).catch(() => null);
   if (!res || !res.ok) {
     hint.innerHTML =
-      `No <code>outputs/manifest.json</code>. From repo root run: <code>uv run python gepa/examples/run_output_viewer/gen_outputs_manifest.py</code>`;
+      `No <code>outputs/manifest.json</code>. From repo root run: <code>uv run python examples/run_output_viewer/gen_outputs_manifest.py</code> (or <code>…/gepa/examples/…</code> in a monorepo).`;
     return;
   }
   const data = await res.json();
