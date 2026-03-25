@@ -98,6 +98,14 @@ class TestCandidateTreeHtml:
         assert 'id="tooltip"' in html
         assert "showTooltip" in html
 
+    def test_iframe_diff_postmessage_hook(self):
+        """Embedded tree can notify a parent run viewer (Left/Right compare panes)."""
+        candidates, parents, val_scores, pareto_front = _sample_data()
+        html = candidate_tree_html_from_data(candidates, parents, val_scores, pareto_front)
+        assert "gepa-candidate-tree" in html
+        assert "postMessage" in html
+        assert "data-gepa-diff" in html
+
 
 class TestGEPAResultVisualization:
     def test_result_candidate_tree_dot(self):

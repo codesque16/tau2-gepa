@@ -225,6 +225,12 @@ _HTML_TEMPLATE = """\
   .role-best { background: #00e5ff33; color: #006064; }
   .role-pareto { background: #ff980033; color: #e65100; }
   .role-seed { background: #e0e0e0; color: #424242; }
+  .tt-diff-row { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e9ecef; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: #495057; }
+  .tt-diff-row button {
+    cursor: pointer; padding: 4px 10px; border-radius: 6px; border: 1px solid #ced4da;
+    background: #fff; font-size: 12px; font-weight: 600; color: #212529;
+  }
+  .tt-diff-row button:hover { background: #e9ecef; }
 </style>
 </head>
 <body>
@@ -246,6 +252,10 @@ const DOT = `__DOT_STRING__`;
 const nodeMap = {};
 NODES.forEach(n => { nodeMap[n.idx] = n; });
 
+function inIframe() {
+  try { return window.self !== window.top; } catch (e) { return true; }
+}
+
 let pinnedIdx = null;   // non-null when tooltip is click-pinned (scrollable)
 let hoverIdx = null;    // non-null when hovering over a node
 
@@ -263,10 +273,17 @@ function renderTooltip(idx) {
     comps += '<div class="tt-comp-name">' + name + '</div><div class="tt-comp-text">' + escaped + '</div>';
   }
 
+  let diffRow = "";
+  if (inIframe()) {
+    diffRow = '<div class="tt-diff-row"><span>Compare in parent viewer:</span>' +
+      '<button type="button" data-gepa-diff="left" data-idx="' + idx + '">Left pane</button>' +
+      '<button type="button" data-gepa-diff="right" data-idx="' + idx + '">Right pane</button></div>';
+  }
+
   return '<div class="tt-header">Candidate ' + n.idx + roleBadge + '</div>' +
     '<div class="tt-meta">Score: <strong>' + n.score + '</strong>&nbsp;&nbsp;|&nbsp;&nbsp;Parent(s): ' + n.parents +
     '</div><div class="tt-hint">' + (pinnedIdx === idx ? 'Click node again to dismiss' : 'Click to pin &amp; scroll') + '</div>' +
-    comps;
+    comps + diffRow;
 }
 
 function positionTooltip(x, y) {
@@ -293,6 +310,20 @@ function hideTooltip() {
   hoverIdx = null;
   document.getElementById("tooltip").style.display = "none";
 }
+
+document.getElementById("tooltip").addEventListener("click", function(e) {
+  const btn = e.target.closest("button[data-gepa-diff]");
+  if (!btn || !inIframe()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const side = btn.getAttribute("data-gepa-diff");
+  const pickIdx = parseInt(btn.getAttribute("data-idx"), 10);
+  if (side !== "left" && side !== "right" || isNaN(pickIdx)) return;
+  window.parent.postMessage(
+    { source: "gepa-candidate-tree", type: "diff-pick", side: side, idx: pickIdx },
+    "*"
+  );
+});
 
 // Click outside tooltip and outside nodes dismisses pinned tooltip
 document.addEventListener("mousedown", function(e) {
