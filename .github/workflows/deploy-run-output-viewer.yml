@@ -1,4 +1,5 @@
-# Publishes only examples/run_output_viewer/ (GEPA run viewer — best_policy, candidate tree, diffs).
+# Publishes examples/run_output_viewer/ plus committed viz data so the run dropdown works on Pages.
+# Commit viz_outputs/ (and push) so CI can copy it into the site; gen_outputs_manifest.py runs in CI.
 # No Jekyll. Use Settings → Pages → Source: GitHub Actions.
 #
 # If the live site still shows "GEPA evolution dump viewer", the repo was publishing
@@ -35,8 +36,21 @@ jobs:
           test -f examples/run_output_viewer/index.html
           test -f examples/run_output_viewer/app.js
           grep -q "GEPA run output viewer" examples/run_output_viewer/index.html
+          python3 examples/run_output_viewer/gen_outputs_manifest.py
           mkdir -p _site
           cp -r examples/run_output_viewer/. _site/
+          if [ -d viz_outputs ]; then
+            cp -r viz_outputs _site/
+            echo "Bundled viz_outputs/ into site"
+          fi
+          if [ -d gepa/viz_outputs ]; then
+            mkdir -p _site/gepa
+            cp -r gepa/viz_outputs _site/gepa/
+            echo "Bundled gepa/viz_outputs/ into site"
+          fi
+          if [ ! -f _site/viz_outputs/manifest.json ] && [ ! -f _site/gepa/viz_outputs/manifest.json ]; then
+            echo "::warning::No viz_outputs (or gepa/viz_outputs) in the repo — run list will be empty on Pages. Commit run folders under viz_outputs/ and push."
+          fi
 
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
