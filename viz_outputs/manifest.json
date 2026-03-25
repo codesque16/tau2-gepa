@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "tau2_retail_03-18_10-14"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "tau2_retail_03-18_08-54"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "mermaid_gpt5nano_03-24_07-46-32"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "mermaid_gemini31flashlite_03-24_10-42-21"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "mermaid_gemini31flashlite_03-24_09-29-43[I]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "base_gpt5nano_03-24_07-45-15"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "base_gemini31flashlite_03-34_09-25-08[I]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "base_gemini31flashlite_03-24_10-41-11"
+    }
+  ]
+}

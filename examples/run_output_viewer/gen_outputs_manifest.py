@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
-"""Write outputs/manifest.json next to your outputs/ directory at the repo root.
+"""Write manifest.json for GEPA runs under viz_outputs/ only (never outputs/).
+
+Writes to the same directory that holds the runs:
+  - viz_outputs/manifest.json if runs live in repo-root viz_outputs/
+  - gepa/viz_outputs/manifest.json if runs live there (typical monorepo layout)
+
+Prefers repo-root viz_outputs/ when it contains any run; otherwise uses gepa/viz_outputs/.
 
 Run from repo root (standalone fork):
   uv run python examples/run_output_viewer/gen_outputs_manifest.py
 
-Monorepo (gepa nested):
+Monorepo (examples under gepa/):
   uv run python gepa/examples/run_output_viewer/gen_outputs_manifest.py
 """
 
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
+
+MARKERS = ("best_policy.md", "candidate_tree.html", "candidates.json")
 
 
 def _repo_root() -> Path:
@@ -24,26 +31,53 @@ def _repo_root() -> Path:
     return parent_of_examples
 
 
-def main() -> int:
-    repo_root = _repo_root()
-    out_dir = repo_root / "outputs"
-    if not out_dir.is_dir():
-        print(f"Missing outputs directory: {out_dir}", file=sys.stderr)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "manifest.json").write_text(json.dumps({"runs": []}, indent=2) + "\n", encoding="utf-8")
-        return 0
-
-    markers = ("best_policy.md", "candidate_tree.html", "candidates.json")
-    runs: list[str] = []
-    for p in sorted(out_dir.iterdir(), key=lambda x: x.name.lower(), reverse=True):
+def _dir_has_run_subdirs(d: Path) -> bool:
+    if not d.is_dir():
+        return False
+    for p in d.iterdir():
         if not p.is_dir() or p.name.startswith("."):
             continue
-        if any((p / m).is_file() for m in markers):
-            runs.append(p.name)
+        if any((p / m).is_file() for m in MARKERS):
+            return True
+    return False
 
-    dest = out_dir / "manifest.json"
-    dest.write_text(json.dumps({"runs": runs}, indent=2) + "\n", encoding="utf-8")
-    print(f"Wrote {dest} ({len(runs)} run(s))")
+
+def _resolve_viz_tree(repo: Path) -> tuple[Path, str]:
+    """Return (directory, basePath for URLs)."""
+    root_viz = repo / "viz_outputs"
+    gepa_viz = repo / "gepa" / "viz_outputs"
+    if _dir_has_run_subdirs(root_viz):
+        return root_viz, "viz_outputs"
+    if _dir_has_run_subdirs(gepa_viz):
+        return gepa_viz, "gepa/viz_outputs"
+    return root_viz, "viz_outputs"
+
+
+def _collect_entries(viz_dir: Path, base_path: str) -> list[dict[str, str]]:
+    if not viz_dir.is_dir():
+        return []
+    entries: list[dict[str, str]] = []
+    for p in sorted(viz_dir.iterdir(), key=lambda x: x.name.lower(), reverse=True):
+        if not p.is_dir() or p.name.startswith("."):
+            continue
+        if not any((p / m).is_file() for m in MARKERS):
+            continue
+        entries.append({"basePath": base_path, "name": p.name})
+    return entries
+
+
+def main() -> int:
+    repo_root = _repo_root()
+    viz_dir, base_path = _resolve_viz_tree(repo_root)
+    entries = _collect_entries(viz_dir, base_path)
+
+    manifest: dict = {"version": 1, "entries": entries}
+    text = json.dumps(manifest, indent=2) + "\n"
+
+    viz_dir.mkdir(parents=True, exist_ok=True)
+    dest = viz_dir / "manifest.json"
+    dest.write_text(text, encoding="utf-8")
+    print(f"Wrote {dest} ({len(entries)} run(s) from {base_path}/)")
     return 0
 
 

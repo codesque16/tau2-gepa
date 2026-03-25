@@ -29,8 +29,43 @@ function outputsBase() {
   return `${root}/outputs`;
 }
 
-function runUrl(runId, file) {
-  return `${outputsBase()}/${encodeURIComponent(runId)}/${file}`;
+/** @param {string} basePath e.g. viz_outputs (legacy manifests may use outputs) */
+/** @param {string} runName directory name */
+function runDataUrl(basePath, runName, file) {
+  const root = repoRootPrefix();
+  const base = basePath.replace(/^\/+|\/+$/g, "");
+  const q = encodeURIComponent(runName);
+  return `${root}/${base}/${q}/${file}`;
+}
+
+function parseManifest(data) {
+  const entries = [];
+  if (data.entries && Array.isArray(data.entries)) {
+    for (const e of data.entries) {
+      if (e && typeof e.basePath === "string" && typeof e.name === "string") {
+        entries.push({ basePath: e.basePath, name: e.name });
+      }
+    }
+    return entries;
+  }
+  if (data.runs && Array.isArray(data.runs)) {
+    for (const name of data.runs) {
+      if (typeof name === "string") entries.push({ basePath: "outputs", name });
+    }
+  }
+  return entries;
+}
+
+/** Tab separates basePath from run name (names rarely contain \\t). */
+function runSelectValue(entry) {
+  return `${entry.basePath}\t${entry.name}`;
+}
+
+function parseRunSelectValue(val) {
+  if (!val) return null;
+  const i = val.indexOf("\t");
+  if (i < 0) return { basePath: "outputs", name: val };
+  return { basePath: val.slice(0, i), name: val.slice(i + 1) };
 }
 
 let policyMarkdown = "";
@@ -204,7 +239,7 @@ function setPolicyView(mode) {
   if (!isRaw) renderMarkdownPreview(policyMarkdown, preview);
 }
 
-async function loadRun(runId) {
+async function loadRun(selectVal) {
   const errEl = document.getElementById("policy-error");
   errEl.hidden = true;
   policyMarkdown = "";
@@ -214,9 +249,10 @@ async function loadRun(runId) {
   document.getElementById("compare-diff-out").innerHTML = "";
   setCompareViewMode("plain");
 
-  if (!runId) return;
+  const loc = parseRunSelectValue(selectVal);
+  if (!loc) return;
 
-  const policyRes = await fetch(runUrl(runId, "best_policy.md"));
+  const policyRes = await fetch(runDataUrl(loc.basePath, loc.name, "best_policy.md"));
   if (policyRes.ok) {
     policyMarkdown = await policyRes.text();
     setPolicyView(document.getElementById("btn-raw").classList.contains("on") ? "raw" : "preview");
@@ -225,7 +261,7 @@ async function loadRun(runId) {
     errEl.hidden = false;
   }
 
-  const candRes = await fetch(runUrl(runId, "candidates.json"));
+  const candRes = await fetch(runDataUrl(loc.basePath, loc.name, "candidates.json"));
   if (candRes.ok) {
     try {
       candidatesData = await candRes.json();
@@ -236,7 +272,7 @@ async function loadRun(runId) {
   }
   fillCompareSelects();
 
-  const treeUrlFull = runUrl(runId, "candidate_tree.html");
+  const treeUrlFull = runDataUrl(loc.basePath, loc.name, "candidate_tree.html");
   const head = await fetch(treeUrlFull, { method: "HEAD" }).catch(() => null);
   const hasTree = head && head.ok;
   document.getElementById("tree-wrap").hidden = !hasTree;
@@ -255,23 +291,45 @@ async function loadRun(runId) {
 async function loadManifest() {
   const hint = document.getElementById("run-hint");
   const sel = document.getElementById("run-select");
-  const url = `${outputsBase()}/manifest.json`;
-  const res = await fetch(url).catch(() => null);
-  if (!res || !res.ok) {
+  const root = repoRootPrefix();
+  const candidates = [
+    `${root}/viz_outputs/manifest.json`,
+    `${root}/gepa/viz_outputs/manifest.json`,
+    `${root}/outputs/manifest.json`,
+  ];
+  let data = null;
+  let loadedFrom = "";
+  for (const url of candidates) {
+    const res = await fetch(url).catch(() => null);
+    if (res && res.ok) {
+      try {
+        data = await res.json();
+        loadedFrom = url;
+        break;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+  if (!data) {
     hint.innerHTML =
-      `No <code>outputs/manifest.json</code>. From repo root run: <code>uv run python examples/run_output_viewer/gen_outputs_manifest.py</code> (or <code>…/gepa/examples/…</code> in a monorepo).`;
+      `No manifest. Run <code>uv run python examples/run_output_viewer/gen_outputs_manifest.py</code> — indexes <code>viz_outputs/</code> only (or <code>gepa/viz_outputs/</code> when that holds the runs).`;
     return;
   }
-  const data = await res.json();
-  const runs = Array.isArray(data.runs) ? data.runs : [];
+  const manifestEntries = parseManifest(data);
+  const byName = {};
+  for (const e of manifestEntries) {
+    byName[e.name] = (byName[e.name] || 0) + 1;
+  }
   sel.innerHTML = '<option value="">— Select run —</option>';
-  runs.forEach((r) => {
+  manifestEntries.forEach((e) => {
     const o = document.createElement("option");
-    o.value = r;
-    o.textContent = r;
+    o.value = runSelectValue(e);
+    o.textContent = byName[e.name] > 1 ? `${e.name} (${e.basePath})` : e.name;
     sel.appendChild(o);
   });
-  hint.textContent = `${runs.length} run(s) in manifest · served from ${outputsBase()}/`;
+  const src = loadedFrom.replace(/^.*\//, "");
+  hint.textContent = `${manifestEntries.length} run(s) · manifest ${src}`;
 }
 
 document.querySelectorAll(".tabs button").forEach((b) => {
