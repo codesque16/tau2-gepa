@@ -1,8 +1,8 @@
-# GEPA evolution visualizer (GitHub Pages, `/docs`)
+# GEPA docs static sites (`/docs`)
 
-This folder mirrors how **τ²-bench** publishes the trajectory viewer: a **plain static site** (HTML + JS + CSS) under `docs/`, meant for **Settings → Pages → Deploy from a branch → folder `/docs`**.
-
-The React/Vite app under `web/gepa-visualizer/` is the **other** τ² pattern (like `web/leaderboard/`): build with Node and deploy via **GitHub Actions** + `deploy-pages`. Use one or the other.
+- **`index.html`** — redirects to **`run-output-viewer/`** (GEPA run viewer: `best_policy.md`, trees, diffs). Prefer publishing that viewer via **GitHub Actions** (workflow `deploy-run-output-viewer.yml`).
+- **`evolution-dump/`** — JSONL evolution dump viewer (was the old root `docs/index.html`). Needs `docs/visualizer_dump/` from `scripts/export_gepa_viz_for_pages.py`.
+- The React/Vite app under `web/gepa-visualizer/` is an alternate full UI; this repo’s Pages workflow deploys **`examples/run_output_viewer/`** only.
 
 ## Local preview
 
@@ -22,7 +22,7 @@ The React/Vite app under `web/gepa-visualizer/` is the **other** τ² pattern (l
    python3 -m http.server 8080
    ```
 
-   Open **http://localhost:8080** (or **http://localhost:8080/index.html**).
+   Open **http://localhost:8080** — you are redirected to **`run-output-viewer/`**; for the JSONL evolution viewer use **http://localhost:8080/evolution-dump/** .
 
 ## GitHub Pages (`/docs` branch deploy)
 
@@ -35,25 +35,21 @@ Site URL (project repo):
 
 - `https://<username>.github.io/<repo>/`
 
-If assets fail to load, set in `index.html` `<head>`:
-
-```html
-<base href="/YOUR_REPO_NAME/" />
-```
-
-(τ²-bench documents the same for project sites.)
+For the evolution viewer in a **project page** subpath, `evolution-dump/index.html` uses `<base href="../">` so `visualizer_dump/` resolves from the site root.
 
 ## Files
 
-| File | Purpose |
+| Path | Purpose |
 |------|---------|
-| `index.html` | Run selector + summary of accepted/rejected dumps |
-| `js/app.js` | Loads `visualizer_dump/runs.json` and per-run JSONL |
-| `css/style.css` | Basic layout |
-| `.nojekyll` | Tells GitHub Pages not to run Jekyll on this tree |
-| `visualizer_dump/` | Populated by `scripts/export_gepa_viz_for_pages.py` (commit after export) |
+| `index.html` | Redirect → `run-output-viewer/` |
+| `run-output-viewer/` | Mirror of `examples/run_output_viewer/` (sync when you change the source) |
+| `evolution-dump/index.html` | JSONL run selector + metrics |
+| `js/app.js` | Evolution viewer logic; loads `visualizer_dump/runs.json` |
+| `css/style.css` | Evolution viewer layout |
+| `.nojekyll` | Disables Jekyll for this tree |
+| `visualizer_dump/` | From `scripts/export_gepa_viz_for_pages.py` |
 
 ## Related
 
-- **Actions deploy (Vite)**: `web/gepa-visualizer/` + `.github/workflows/deploy-gepa-visualizer.yml`
+- **GitHub Actions Pages**: `.github/workflows/deploy-run-output-viewer.yml`
 - **τ² trajectory viewer docs**: `tau2-bench/docs/README.md`

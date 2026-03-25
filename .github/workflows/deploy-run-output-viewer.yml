@@ -1,9 +1,9 @@
-# Publishes only the static run output viewer (examples/run_output_viewer/).
-# No Jekyll / MkDocs — avoids blog front matter (e.g. date.created) breaking the old Pages Jekyll flow.
+# Publishes only examples/run_output_viewer/ (GEPA run viewer — best_policy, candidate tree, diffs).
+# No Jekyll. Use Settings → Pages → Source: GitHub Actions.
 #
-# GitHub repo Settings → Pages → Build and deployment: source must be "GitHub Actions".
-# If you still see a workflow using actions/jekyll-build-pages, remove it under Actions →
-# workflows, or delete .github/workflows/pages.yml (or similar) so only this job deploys.
+# If the live site still shows "GEPA evolution dump viewer", the repo was publishing
+# docs/ via "Deploy from a branch". Switch Pages source to GitHub Actions, or push this
+# workflow: the default docs index now redirects to run-output-viewer/ for branch deploys.
 
 name: Deploy run output viewer to GitHub Pages
 
@@ -29,10 +29,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare static site (fail if wrong folder)
+        run: |
+          set -euo pipefail
+          test -f examples/run_output_viewer/index.html
+          test -f examples/run_output_viewer/app.js
+          grep -q "GEPA run output viewer" examples/run_output_viewer/index.html
+          mkdir -p _site
+          cp -r examples/run_output_viewer/. _site/
+
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: examples/run_output_viewer
+          path: _site
 
   deploy:
     environment:

@@ -3,52 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GEPA visualizer</title>
-  <!-- For GitHub project pages, uncomment and set your repo name:
-  <base href="/YOUR_REPO_NAME/" />
-  -->
-  <link rel="stylesheet" href="css/style.css" />
+  <title>GEPA — run viewer</title>
+  <meta http-equiv="refresh" content="0; url=run-output-viewer/" />
 </head>
 <body>
-  <header class="header">
-    <h1>GEPA evolution dump viewer</h1>
-    <p class="muted">Static site in <code>docs/</code> — same idea as τ²-bench trajectory viewer.</p>
-  </header>
-
-  <main class="main">
-    <section class="panel">
-      <label for="run-select">Run</label>
-      <select id="run-select" aria-label="Select run"></select>
-      <p class="muted small">Export data with <code>uv run python scripts/export_gepa_viz_for_pages.py</code> then commit <code>docs/visualizer_dump/</code>.</p>
-    </section>
-
-    <section id="status" class="status"></section>
-
-    <section class="grid">
-      <div class="card">
-        <h2>Accepted</h2>
-        <p id="accepted-count">—</p>
-      </div>
-      <div class="card">
-        <h2>Rejected</h2>
-        <p id="rejected-count">—</p>
-      </div>
-      <div class="card">
-        <h2>Pareto updates</h2>
-        <p id="pareto-count">—</p>
-      </div>
-      <div class="card">
-        <h2>Valset evals</h2>
-        <p id="valset-count">—</p>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Latest accepted (raw)</h2>
-      <pre id="accepted-preview" class="preview"></pre>
-    </section>
-  </main>
-
-  <script src="js/app.js"></script>
+  <p><a href="run-output-viewer/">GEPA run output viewer</a> — if you are not redirected, use that link.</p>
+  <p class="muted" style="font-family: system-ui, sans-serif; font-size: 14px;">
+    <a href="evolution-dump/">Evolution dump viewer</a> (JSONL / visualizer_dump) — previously at this URL when Pages used only <code>docs/</code>.
+  </p>
 </body>
 </html>
