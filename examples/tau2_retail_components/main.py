@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Tau2 retail GEPA using the **tau2-mermaid** solo agent (e.g. Gemini + MCP), not tau2-bench.
+"""Tau2 retail GEPA with **named text components** (GEPA ``dict[str, str]`` candidates).
 
-Configuration is **YAML-driven**; see ``configs/gepa_retail_mermaid.yaml``. ``gepa.optimization_mode`` follows
-:class:`gepa.optimize_anything.optimize_anything`: **single_task** (``dataset=None``, ``valset=None``),
-**multi_task** (``dataset`` only), **generalization** (``dataset`` + ``valset``).
+Optimizes named text surfaces in parallel (round-robin or ``reflection_module_selector``), including:
 
-Requires the **tau2-mermaid** monorepo. Use **``uv sync``** so ``gepa`` resolves to the
-vendored ``./gepa`` package (``[tool.uv.sources]``): PyPI-only ``gepa`` omits
-``TrackingConfig.use_logfire``, so **nested Logfire spans** from ``LogfireSpanCallback``
-never register (unlike ``examples/tau2_retail/main.py`` with a full GEPA install).
+- ``tools_markdown`` — tool names and descriptions (written to a temp MCP markdown path per eval).
+- ``mermaid_instructions`` — **only** how to read/follow the mermaid diagram (conventions, navigation).
+- ``mermaid_graph`` — SOP global + **node policies** + ``## SOP Flowchart`` (fenced mermaid); node policies and graph are optimized together.
+- ``tool_code`` — optional Python design / stub code; gated (compile + optional Monty) before eval; merged into the temp tools markdown.
+
+**Retail Agent Rules** are **not** optimized: ``gepa.fixed_retail_agent_rules_path`` is read once and prepended to every assembled policy.
+
+Configuration: ``configs/gepa_retail_components.yaml``. Uses ``gepa.seed_components``,
+``gepa.gepa_merge_templates``, and ``gepa.fixed_retail_agent_rules_path``.
 
 Run from repo root::
 
   uv sync
-  uv run python gepa/examples/tau2_retail_mermaid/main.py --config configs/gepa_retail_mermaid.yaml --fresh
+  uv run python gepa/examples/tau2_retail_components/main.py --config configs/gepa_retail_components.yaml --fresh
 
 CLI overrides: ``--config``, ``--fresh``, ``--run-dir`` (resume path).
 """
@@ -43,17 +46,19 @@ if not (REPO_ROOT / "domains" / "retail" / "evaluate.py").is_file():
     )
     raise SystemExit(1)
 
-from examples.tau2_retail_mermaid.reflection_prompts_md import (
-    build_reflection_prompt_from_optimizer_template,
+from examples.tau2_retail_components.reflection_prompts_md import (
+    build_component_reflection_templates,
+    load_component_reflection_prompts_file,
     load_gepa_template_file,
-    load_reflection_prompts_file,
     validate_diagnosis_prompt_template,
 )
+from examples.tau2_retail_components.utils import (
+    BASE_COMPONENT_KEYS,
+    assemble_mermaid_policy,
+    evaluate_policy_with_mermaid_components,
+)
 from examples.tau2_retail_mermaid.utils import (
-    BACKGROUND,
-    OBJECTIVE_TRAIN_ONLY,
     domain_evaluate_communication_from_raw,
-    evaluate_policy_with_mermaid_agent,
     load_retail_tasks_json,
     load_stacked_yaml,
     simulation_dict_for_solo,
@@ -70,11 +75,10 @@ from gepa.optimize_anything import (
 
 _EXAMPLE_DIR = _EXAMPLE_FILE.parent
 _REFLECTION_PROMPTS_FALLBACK_CHAIN = (
-    _EXAMPLE_DIR / "reflection_prompts_mermaid.md",
-    _EXAMPLE_DIR / "reflection_prompts_solo_v1.md",
-    _EXAMPLE_DIR / "reflection_prompts.md",
+    _EXAMPLE_DIR / "reflection_prompts_components.md",
+    _EXAMPLE_DIR.parent / "tau2_retail_mermaid" / "reflection_prompts_mermaid.md",
 )
-_DEFAULT_CONFIG = REPO_ROOT / "configs" / "gepa_retail_mermaid.yaml"
+_DEFAULT_CONFIG = REPO_ROOT / "configs" / "gepa_retail_components.yaml"
 
 
 def _filtered_dataclass(cls: type[Any], **kwargs: Any) -> Any:
@@ -142,39 +146,34 @@ def _parse_max_metric_calls(gepa: dict[str, Any]) -> int | None:
     return int(raw)
 
 
-def _resolve_reflection_prompts(
+def _load_component_reflection_bundle(
+    repo_root: Path,
     path_arg: str | None,
-) -> tuple[str, str, str | None, str | None, str | None]:
-    if path_arg is None:
+) -> tuple[str, str, str | None, Any]:
+    """Return (objective, background, label path, component reflection bundle)."""
+    if path_arg in (None, "", "null"):
         for candidate in _REFLECTION_PROMPTS_FALLBACK_CHAIN:
             if candidate.is_file():
                 p = candidate.resolve()
-                bundle = load_reflection_prompts_file(p)
-                return (
-                    bundle.objective,
-                    bundle.background,
-                    str(p),
-                    bundle.optimizer,
-                    bundle.evaluator_prompt_template,
-                )
-        return OBJECTIVE_TRAIN_ONLY, BACKGROUND, None, None, None
+                b = load_component_reflection_prompts_file(p)
+                return b.objective, b.background, str(p), b
+        raise FileNotFoundError(
+            "Set gepa.reflection_prompts_file or add "
+            f"{_EXAMPLE_DIR / 'reflection_prompts_components.md'} (missing)."
+        )
 
     p = Path(path_arg).expanduser().resolve()
-    bundle = load_reflection_prompts_file(p)
-    return (
-        bundle.objective,
-        bundle.background,
-        str(p),
-        bundle.optimizer,
-        bundle.evaluator_prompt_template,
-    )
+    if not p.is_file():
+        p = _resolve_repo_path(repo_root, str(path_arg))
+    b = load_component_reflection_prompts_file(p)
+    return b.objective, b.background, str(p), b
 
 
 def main() -> None:
     repo_root = REPO_ROOT
 
     parser = argparse.ArgumentParser(
-        description="Tau2 retail GEPA (tau2-mermaid agent) — config-driven YAML + optional CLI overrides"
+        description="Tau2 retail GEPA — multi-component candidates (tools + mermaid); YAML-driven."
     )
     parser.add_argument(
         "--config",
@@ -270,16 +269,42 @@ def main() -> None:
         if not dataset_tasks or not valset_tasks:
             raise RuntimeError("generalization mode: failed to load dataset or valset tasks.")
 
-    seed_pol = gepa.get("seed_policy_path")
-    if not seed_pol:
-        raise ValueError("gepa.seed_policy_path is required in YAML.")
-    seed_path = _resolve_repo_path(repo_root, str(seed_pol))
-    if not seed_path.is_file():
-        raise FileNotFoundError(f"gepa.seed_policy_path not found: {seed_path}")
-    seed_candidate = seed_path.read_text(encoding="utf-8")
-    seed_label = str(seed_path)
+    tcg_for_components = gepa.get("tool_code_gate") or {}
+    tool_code_agent_enabled = bool(tcg_for_components.get("enabled", False))
+    component_keys: tuple[str, ...] = (
+        (*BASE_COMPONENT_KEYS, "tool_code") if tool_code_agent_enabled else BASE_COMPONENT_KEYS
+    )
 
-    out_base = str(gepa.get("output_dir") or "outputs/tau2_retail_mermaid")
+    seed_components_cfg = gepa.get("seed_components")
+    if not seed_components_cfg or not isinstance(seed_components_cfg, dict):
+        raise ValueError(
+            "This entrypoint requires gepa.seed_components: a mapping of "
+            f"{list(component_keys)} to markdown file paths."
+        )
+    seed_candidate: dict[str, str] = {}
+    seed_paths: dict[str, str] = {}
+    for comp in component_keys:
+        rel = seed_components_cfg.get(comp)
+        if not rel:
+            raise ValueError(f"gepa.seed_components must define {comp!r}.")
+        p = _resolve_repo_path(repo_root, str(rel))
+        if not p.is_file():
+            raise FileNotFoundError(f"gepa.seed_components[{comp!r}] not found: {p}")
+        seed_candidate[comp] = p.read_text(encoding="utf-8")
+        seed_paths[comp] = str(p)
+    seed_label = json.dumps(seed_paths, sort_keys=True)
+
+    fixed_rules_rel = gepa.get("fixed_retail_agent_rules_path")
+    if not fixed_rules_rel:
+        raise ValueError(
+            "gepa.fixed_retail_agent_rules_path is required: markdown prepended to the policy (not a GEPA component)."
+        )
+    fixed_rules_path = _resolve_repo_path(repo_root, str(fixed_rules_rel))
+    if not fixed_rules_path.is_file():
+        raise FileNotFoundError(f"gepa.fixed_retail_agent_rules_path not found: {fixed_rules_path}")
+    policy_prefix = fixed_rules_path.read_text(encoding="utf-8")
+
+    out_base = str(gepa.get("output_dir") or "outputs/tau2_retail_components")
     experiment_name = (str(args.experiment_name).strip() if args.experiment_name else None) or None
     fresh = bool(args.fresh or gepa.get("fresh"))
     if args.run_dir is not None:
@@ -302,34 +327,35 @@ def main() -> None:
 
     refl_arg = gepa.get("reflection_prompts_file")
     if refl_arg in (None, "", "null"):
-        objective, background, reflection_label, optimizer, evaluator_prompt_template = (
-            _resolve_reflection_prompts(None)
-        )
+        objective, background, reflection_label, refl_bundle = _load_component_reflection_bundle(repo_root, None)
     else:
-        objective, background, reflection_label, optimizer, evaluator_prompt_template = (
-            _resolve_reflection_prompts(str(_resolve_repo_path(repo_root, str(refl_arg))))
+        objective, background, reflection_label, refl_bundle = _load_component_reflection_bundle(
+            repo_root, str(_resolve_repo_path(repo_root, str(refl_arg)))
         )
 
-    tmpl = gepa.get("gepa_template_file")
-    gepa_template_label: str | None = None
-    if tmpl in (None, "", "null"):
-        gepa_generated_template = None
-    else:
-        tmpl_path = _resolve_repo_path(repo_root, str(tmpl))
-        gepa_generated_template = load_gepa_template_file(str(tmpl_path))
-        gepa_template_label = str(tmpl_path)
+    custom_reflection_template = build_component_reflection_templates(
+        refl_bundle,
+        component_names=component_keys,
+    )
+    reflection_for_optimize = (None, None)
+    evaluator_prompt_template = refl_bundle.evaluator_prompt_template
 
-    optimizer_body = (optimizer or "").strip()
-    if optimizer_body:
-        custom_reflection_template = build_reflection_prompt_from_optimizer_template(
-            optimizer_body,
-            objective=objective,
-            background=background,
+    merge_map_cfg = gepa.get("gepa_merge_templates")
+    if not merge_map_cfg or not isinstance(merge_map_cfg, dict):
+        raise ValueError(
+            "gepa.gepa_merge_templates is required: a mapping of each component name to a merge template "
+            "file containing <gepa_generated> (see merge_templates/ in this example)."
         )
-        reflection_for_optimize = (None, None)
-    else:
-        custom_reflection_template = None
-        reflection_for_optimize = (objective, background)
+    gepa_generated_template: dict[str, str] = {}
+    merge_paths: dict[str, str] = {}
+    for comp in component_keys:
+        rel = merge_map_cfg.get(comp)
+        if not rel:
+            raise ValueError(f"gepa.gepa_merge_templates must define {comp!r}.")
+        tmpl_path = _resolve_repo_path(repo_root, str(rel))
+        gepa_generated_template[comp] = load_gepa_template_file(str(tmpl_path))
+        merge_paths[comp] = str(tmpl_path)
+    gepa_template_label = json.dumps(merge_paths, sort_keys=True)
 
     eval_seed_raw = gepa.get("evaluation_seed")
     eval_seed: int | None
@@ -522,11 +548,68 @@ def main() -> None:
     else:
         raise AssertionError("unreachable reflection_llm_backend")
 
+    def _persisted_additional_tools_markdown() -> str:
+        if not tool_code_agent_enabled:
+            return ""
+        rel = gepa.get("tool_code_persisted_markdown_path")
+        if not rel:
+            return ""
+        p = _resolve_repo_path(repo_root, str(rel))
+        if not p.is_file():
+            return ""
+        text = p.read_text(encoding="utf-8").strip()
+        if not text:
+            return ""
+        return (
+            "\n\n---\n\n## Persisted additional tools (repository file)\n\n"
+            + text
+        )
+
+    def _tool_code_gate_kwargs() -> dict[str, Any] | None:
+        if not tool_code_agent_enabled:
+            return None
+        tcg = gepa.get("tool_code_gate") or {}
+        base: dict[str, Any] = {
+            "enabled": True,
+            "max_rounds": int(tcg.get("max_rounds", 3)),
+            "use_monty": bool(tcg.get("use_monty", False)),
+            "curator": None,
+            "strict_fail_score": bool(tcg.get("strict_fail_score", False)),
+        }
+        if not bool(tcg.get("curator_enabled", True)):
+            return base
+        try:
+            from examples.tau2_retail_components.tool_code_curator import make_genai_tool_code_curator
+
+            mid = str(
+                tcg.get("curator_lm") or diagnosis_lm or reflection_lm_spec or "gemini-2.0-flash"
+            ).strip()
+            _cv = tcg.get("curator_genai_vertex_ai")
+            curator_vertex = bool(_cv) if _cv is not None else diagnosis_genai_vertex_ai
+            _ct = tcg.get("curator_temperature")
+            curator_temp = float(_ct) if _ct is not None else diagnosis_genai_temperature
+            _cm = tcg.get("curator_genai_max_output_tokens")
+            curator_max = int(_cm) if _cm is not None else diagnosis_genai_max_output_tokens
+            _cr = tcg.get("curator_genai_reasoning_effort")
+            curator_effort = (
+                str(_cr).strip() if _cr is not None else diagnosis_genai_reasoning_effort
+            )
+            base["curator"] = make_genai_tool_code_curator(
+                model=mid,
+                vertex_ai=curator_vertex,
+                temperature=curator_temp,
+                max_output_tokens=curator_max,
+                reasoning_effort=curator_effort,
+            )
+        except Exception as e:
+            print(f"WARNING: tool_code GenAI curator disabled: {e}", file=sys.stderr)
+        return base
+
     if opt_mode == "single_task":
         assert single_task is not None
 
         def evaluator(candidate: str | dict[str, Any]) -> tuple[float, SideInfo]:
-            return evaluate_policy_with_mermaid_agent(
+            return evaluate_policy_with_mermaid_components(
                 repo_root=repo_root,
                 candidate=candidate,
                 task=single_task,
@@ -534,6 +617,7 @@ def main() -> None:
                 simulation_raw=sim_raw,
                 evaluate_communication=evaluate_comm,
                 seed=llm_seed_chain.read() if llm_seed_chain is not None else eval_seed,
+                policy_prefix=policy_prefix,
                 diagnosis_lm=diagnosis_lm,
                 diagnosis_prompt_template=_eval_tpl_stripped,
                 diagnosis_llm_backend=diagnosis_llm_backend,
@@ -541,12 +625,15 @@ def main() -> None:
                 diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
                 diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
                 diagnosis_genai_vertex_ai=diagnosis_genai_vertex_ai,
+                tool_code_gate=_tool_code_gate_kwargs(),
+                persisted_additional_tools_markdown=_persisted_additional_tools_markdown(),
+                component_keys=component_keys,
             )
     else:
         assert dataset_tasks is not None
 
         def evaluator(candidate: str | dict[str, Any], example: dict[str, Any]) -> tuple[float, SideInfo]:
-            return evaluate_policy_with_mermaid_agent(
+            return evaluate_policy_with_mermaid_components(
                 repo_root=repo_root,
                 candidate=candidate,
                 task=example,
@@ -554,6 +641,7 @@ def main() -> None:
                 simulation_raw=sim_raw,
                 evaluate_communication=evaluate_comm,
                 seed=llm_seed_chain.read() if llm_seed_chain is not None else eval_seed,
+                policy_prefix=policy_prefix,
                 diagnosis_lm=diagnosis_lm,
                 diagnosis_prompt_template=_eval_tpl_stripped,
                 diagnosis_llm_backend=diagnosis_llm_backend,
@@ -561,6 +649,9 @@ def main() -> None:
                 diagnosis_genai_max_output_tokens=diagnosis_genai_max_output_tokens,
                 diagnosis_genai_reasoning_effort=diagnosis_genai_reasoning_effort,
                 diagnosis_genai_vertex_ai=diagnosis_genai_vertex_ai,
+                tool_code_gate=_tool_code_gate_kwargs(),
+                persisted_additional_tools_markdown=_persisted_additional_tools_markdown(),
+                component_keys=component_keys,
             )
 
     reflection_kw: dict[str, Any] = {
@@ -641,14 +732,8 @@ def main() -> None:
     print(f"Config: {cfg_path}")
     print(f"Repo root: {repo_root}")
     print(f"evaluate_communication: {evaluate_comm}")
-    if reflection_label:
-        print(f"Reflection prompts file: {reflection_label}")
-    else:
-        print("Reflection prompts: inline defaults (utils OBJECTIVE_TRAIN_ONLY / BACKGROUND; no markdown file)")
-    if optimizer_body:
-        print("Reflection prompt: custom (# Optimizer template)")
-    else:
-        print("Reflection prompt: GEPA built-in (objective / background sections)")
+    print(f"Reflection prompts file: {reflection_label}")
+    print(f"Reflection prompt: per-component (# Optimizer / # Optimizer <name>) × {len(component_keys)}")
     _rprint = str(reflection_lm_spec).strip()
     if reflection_llm_backend == "litellm":
         _rprint_suffix = f" (model={_rprint!r})"
@@ -684,6 +769,7 @@ def main() -> None:
         print(f"  dataset_task_ids: {[t.get('id') for t in dataset_tasks]}")
         print(f"  valset_task_ids:  {[t.get('id') for t in (valset_tasks or [])]}")
     print(f"Seed policy: {seed_label}")
+    print(f"Fixed retail rules (prefix): {fixed_rules_path}")
     print(f"Log dir: {log_dir}")
     if llm_seed_chain is not None:
         print(
@@ -698,7 +784,7 @@ def main() -> None:
         import logfire as _logfire_for_span
 
         _cfg_name = cfg_path.name
-        _top_span_label = f"tau2_retail_mermaid GEPA · {_cfg_name}"
+        _top_span_label = f"tau2_retail_components GEPA · {_cfg_name}"
         top_span = _logfire_for_span.span(
             _top_span_label,
             _span_name=_top_span_label,
@@ -744,7 +830,7 @@ def main() -> None:
 
                     _lf_cfg.info(
                         "experiment_config",
-                        run_kind="gepa_tau2_retail_mermaid",
+                        run_kind="gepa_tau2_retail_components",
                         config_path=str(cfg_path.resolve()),
                         config_file=cfg_path.name,
                         config_json=json.dumps(merged, default=str, sort_keys=True),
@@ -772,9 +858,42 @@ def main() -> None:
         _score_label = "aggregate over valset (generalization)"
     print(f"\nBest candidate — {_score_label}: {best_score:.4f}")
 
-    out_path = Path(log_dir) / "best_policy.md"
-    out_path.write_text(best or "", encoding="utf-8")
-    print(f"Saved: {out_path}")
+    out_dir = Path(log_dir) / "best_policy"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if isinstance(best, dict):
+        for k, v in best.items():
+            (out_dir / f"{k}.md").write_text(v or "", encoding="utf-8")
+        assembled = assemble_mermaid_policy(best, policy_prefix=policy_prefix)
+        (out_dir / "assembled_policy.md").write_text(assembled, encoding="utf-8")
+        tc_best = (
+            (best.get("tool_code") or "").strip() if tool_code_agent_enabled else ""
+        )
+        if tc_best:
+            (out_dir / "additional_tools.md").write_text(tc_best + "\n", encoding="utf-8")
+        _saved_parts = "tools_markdown,mermaid_instructions,mermaid_graph"
+        if tool_code_agent_enabled:
+            _saved_parts += ",tool_code"
+        print(
+            f"Saved: {out_dir}/{{{_saved_parts},assembled_policy}}.md"
+            + ("; additional_tools.md" if tc_best else "")
+        )
+        if (
+            tool_code_agent_enabled
+            and bool(gepa.get("tool_code_append_to_persisted_file", False))
+            and tc_best
+        ):
+            rel = gepa.get("tool_code_persisted_markdown_path") or "domains/retail/additional_tools.md"
+            p_append = _resolve_repo_path(repo_root, str(rel))
+            p_append.parent.mkdir(parents=True, exist_ok=True)
+            with p_append.open("a", encoding="utf-8") as fh:
+                fh.write(
+                    f"\n\n## GEPA tool_code ({datetime.now().isoformat()})\n\n```python\n{tc_best}\n```\n"
+                )
+            print(f"Appended accepted tool_code to {p_append}")
+    else:
+        out_path = out_dir / "assembled_policy.md"
+        out_path.write_text(best or "", encoding="utf-8")
+        print(f"Saved: {out_path}")
 
 
 if __name__ == "__main__":
