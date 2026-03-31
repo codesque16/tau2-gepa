@@ -15,7 +15,11 @@
     },
     {
       "basePath": "gepa/viz_outputs",
-      "name": "mermaid_gemini31flashlite_03-24_10-42-21"
+      "name": "mermaid_gemini31flashlite_03-25_05-03-03"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "mermaid_gemini31flashlite_03-24_10-42-21[520]"
     },
     {
       "basePath": "gepa/viz_outputs",
@@ -32,6 +36,38 @@
     {
       "basePath": "gepa/viz_outputs",
       "name": "base_gemini31flashlite_03-24_10-41-11"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "[generalization][mermaid_prompt][E:g31fl][R:g3f][C:g3f][mb:10|it:10][60:20:20][v1]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "[generalization][mermaid_prompt][E:g31fl][R:g31pro][C:g31pro][mb:10|it:10][60:20:20][v1]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "[generalization][base_prompt][E:g31fl][R:g3f][C:g3f][mb:10|it:10][60:20:20][v1]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "[generalization][base_prompt][E:g31fl][R:g3f][C:g3f][mb:10|it:10][60:20:20]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "[generalization][base_prompt][E:g31fl][R:g3f][C:g3f][mb:10|it:10]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "[generalization][base_prompt][E:g31fl][R:g31p][C:g31p][mb:10|it:10][60:20:20][v1]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "[22examples][mermaid_prompt][E:g31fl][R:g31pro][C:g31pro][mb:10|it:10][60:20:20][v1]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
+      "name": "[22examples][base_prompt][E:g31fl][R:g31pro][C:g31pro][mb:10|it:10][60:20:20][v1]"
     }
   ]
 }
