@@ -47,6 +47,10 @@
     },
     {
       "basePath": "gepa/viz_outputs",
+      "name": "[generalization][base_prompt][E:qwen9b][R:g31p][C:g31p][mb:10|it:10][60:20:20][v1]"
+    },
+    {
+      "basePath": "gepa/viz_outputs",
       "name": "[generalization][base_prompt][E:g31fl][R:g3f][C:g3f][mb:10|it:10][60:20:20][v1]"
     },
     {

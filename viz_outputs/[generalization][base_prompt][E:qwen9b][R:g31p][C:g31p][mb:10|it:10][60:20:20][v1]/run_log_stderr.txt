@@ -1,0 +1,173 @@
+GEPA Optimization: 0rollouts [00:00, ?rollouts/s]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Process group termination failed for PID 2968059: [Errno 3] No such process, falling back to simple terminate
+Process group termination failed for PID 2968149: [Errno 3] No such process, falling back to simple terminate
+Process termination failed for PID 2968149, attempting force kill
+Failed to kill process 2968149
+Traceback (most recent call last):
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 124, in fail_after
+    yield cancel_scope
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/mcp/client/stdio/__init__.py", line 205, in stdio_client
+    await process.wait()
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1096, in wait
+    return await self._process.wait()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/subprocess.py", line 137, in wait
+    return await self._transport._wait()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_subprocess.py", line 230, in _wait
+    return await waiter
+           ^^^^^^^^^^^^
+asyncio.exceptions.CancelledError: Cancelled via cancel scope 765f3a75c4d0; reason: deadline exceeded
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/mcp/client/stdio/__init__.py", line 204, in stdio_client
+    with anyio.fail_after(PROCESS_TERMINATION_TIMEOUT):
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 127, in fail_after
+    raise TimeoutError
+TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/mcp/os/posix/utilities.py", line 32, in terminate_posix_process_tree
+    pgid = os.getpgid(pid)
+           ^^^^^^^^^^^^^^^
+ProcessLookupError: [Errno 3] No such process
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/mcp/os/posix/utilities.py", line 52, in terminate_posix_process_tree
+    process.terminate()
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1099, in terminate
+    self._process.terminate()
+  File "/usr/lib/python3.12/asyncio/subprocess.py", line 143, in terminate
+    self._transport.terminate()
+  File "/usr/lib/python3.12/asyncio/base_subprocess.py", line 149, in terminate
+    self._check_proc()
+  File "/usr/lib/python3.12/asyncio/base_subprocess.py", line 142, in _check_proc
+    raise ProcessLookupError()
+ProcessLookupError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/mcp/os/posix/utilities.py", line 58, in terminate_posix_process_tree
+    process.kill()
+  File "/root/Projects/tau2-mermaid/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1102, in kill
+    self._process.kill()
+  File "/usr/lib/python3.12/asyncio/subprocess.py", line 146, in kill
+    self._transport.kill()
+  File "/usr/lib/python3.12/asyncio/base_subprocess.py", line 153, in kill
+    self._check_proc()
+  File "/usr/lib/python3.12/asyncio/base_subprocess.py", line 142, in _check_proc
+    raise ProcessLookupError()
+ProcessLookupError
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 23rollouts [07:30, 19.57s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 43rollouts [15:49, 22.56s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 63rollouts [23:12, 22.39s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Process group termination failed for PID 2987727: [Errno 3] No such process, falling back to simple terminate
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Process group termination failed for PID 2990922: [Errno 3] No such process, falling back to simple terminate
+Process group termination failed for PID 2991003: [Errno 3] No such process, falling back to simple terminate
+Process group termination failed for PID 2990963: [Errno 3] No such process, falling back to simple terminate
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 101rollouts [41:07, 25.60s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 121rollouts [55:44, 30.90s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Process group termination failed for PID 3015684: [Errno 3] No such process, falling back to simple terminate
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 160rollouts [1:13:18, 29.17s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 180rollouts [1:22:16, 28.61s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Process group termination failed for PID 3033207: [Errno 3] No such process, falling back to simple terminate
+Process group termination failed for PID 3033311: [Errno 3] No such process, falling back to simple terminate
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Process group termination failed for PID 3034775: [Errno 3] No such process, falling back to simple terminate
+Process group termination failed for PID 3034797: [Errno 3] No such process, falling back to simple terminate
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 222rollouts [1:42:07, 28.50s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 242rollouts [1:49:01, 26.75s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 262rollouts [1:55:38, 25.08s/rollouts]Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+GEPA Optimization: 262rollouts [2:15:05, 30.94s/rollouts]
