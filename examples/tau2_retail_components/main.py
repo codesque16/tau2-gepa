@@ -472,7 +472,13 @@ def main() -> None:
 
         if gepa.get("use_logfire", True):
             load_dotenv()
-            logfire.configure(scrubbing=False, console=False)
+            from agent.telemetry import configure_logfire_tau2
+
+            configure_logfire_tau2(
+                scrubbing=False,
+                console=False,
+                use_gcp_trace=gepa.get("use_gcp_trace"),
+            )
             instrument_logfire_gemini()
             logfire.instrument_litellm()
     except Exception as e:

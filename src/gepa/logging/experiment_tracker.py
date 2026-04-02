@@ -67,6 +67,12 @@ class ExperimentTracker:
             opts: dict[str, Any] = {"scrubbing": False}
             if self.logfire_run_name:
                 opts["service_name"] = self.logfire_run_name
+            try:
+                from agent.telemetry import merge_gcp_trace_into_logfire_kwargs
+
+                merge_gcp_trace_into_logfire_kwargs(opts)
+            except ImportError:
+                pass
             logfire.configure(**opts)
             # Trace LiteLLM calls in Logfire (requires logfire[litellm] or litellm installed).
             instrument_litellm = getattr(logfire, "instrument_litellm", None)
