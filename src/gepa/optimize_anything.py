@@ -123,6 +123,7 @@ from typing import (
 
 from gepa.adapters.optimize_anything_adapter.optimize_anything_adapter import OptimizeAnythingAdapter
 from gepa.core.adapter import DataInst, GEPAAdapter, ProposalFn
+from gepa.core.callbacks import GEPACallback
 from gepa.core.data_loader import ensure_loader
 from gepa.core.engine import GEPAEngine
 from gepa.core.result import GEPAResult
@@ -135,6 +136,7 @@ from gepa.logging.logger import Logger, LoggerProtocol, StdOutLogger
 from gepa.proposer.merge import MergeProposer
 from gepa.proposer.reflective_mutation.base import CandidateSelector, LanguageModel, ReflectionComponentSelector
 from gepa.proposer.reflective_mutation.reflective_mutation import ReflectiveMutationProposer
+from gepa.strategies.acceptance import AcceptanceCriterion, ImprovementOrEqualAcceptance, StrictImprovementAcceptance
 from gepa.strategies.batch_sampler import BatchSampler, EpochShuffledBatchSampler
 from gepa.strategies.candidate_selector import (
     CurrentBestCandidateSelector,
@@ -473,6 +475,11 @@ class EngineConfig:
         "pareto", "current_best", "epsilon_greedy", "top_k_pareto"
     ] = "pareto"
     frontier_type: FrontierType = "hybrid"
+
+    # Acceptance criterion for reflective mutation proposals
+    acceptance_criterion: AcceptanceCriterion | Literal[
+        "strict_improvement", "improvement_or_equal"
+    ] = "strict_improvement"
 
     # Parallelization settings for evaluation
     parallel: bool = True
@@ -903,6 +910,24 @@ class GEPAConfig:
 
     # Complex callbacks that aren't serializable
     stop_callbacks: StopperProtocol | Sequence[StopperProtocol] | None = None
+    callbacks: "list[GEPACallback] | None" = None
+    """Observation callbacks for monitoring optimization progress.
+
+    Receive events like ``on_optimization_start``, ``on_iteration_end``,
+    ``on_candidate_accepted``, ``on_proposal_end``, etc.  See
+    :class:`~gepa.core.callbacks.GEPACallback` for the full protocol.
+
+    Example::
+
+        class MyCallback:
+            def on_candidate_accepted(self, event):
+                print(f"New candidate {event['new_candidate_idx']} accepted")
+
+        config = GEPAConfig(
+            callbacks=[MyCallback()],
+            engine=EngineConfig(max_metric_calls=100),
+        )
+    """
 
     # Optional extra :class:`~gepa.core.callbacks.GEPACallback` instances merged into the engine
     # callback list (after Logfire / filesystem dump callbacks when those are enabled).
@@ -1434,6 +1459,27 @@ def optimize_anything(
             f"val_evaluation_policy should be 'full_eval' or an EvaluationPolicy instance, but got {type(config.engine.val_evaluation_policy)}"
         )
 
+    # --- 5b. Build acceptance criterion from EngineConfig ---
+    acceptance_criterion_instance: AcceptanceCriterion
+    if isinstance(config.engine.acceptance_criterion, str):
+        acceptance_factories: dict[str, type[AcceptanceCriterion]] = {
+            "strict_improvement": StrictImprovementAcceptance,
+            "improvement_or_equal": ImprovementOrEqualAcceptance,
+        }
+        try:
+            acceptance_criterion_instance = acceptance_factories[config.engine.acceptance_criterion]()
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown acceptance_criterion: {config.engine.acceptance_criterion}. "
+                "Supported strategies: 'strict_improvement', 'improvement_or_equal'"
+            ) from exc
+    elif isinstance(config.engine.acceptance_criterion, AcceptanceCriterion):
+        acceptance_criterion_instance = config.engine.acceptance_criterion
+    else:
+        raise TypeError(
+            "acceptance_criterion must be a supported string strategy or an instance of AcceptanceCriterion."
+        )
+
     # --- 6. Build module selector from ReflectionConfig ---
     if isinstance(config.reflection.module_selector, str):
         module_selector_cls = {
@@ -1532,6 +1578,7 @@ def optimize_anything(
         reflection_prompt_template=config.reflection.reflection_prompt_template,
         gepa_generated_template=config.reflection.gepa_generated_template,
         custom_candidate_proposer=config.reflection.custom_candidate_proposer,
+        callbacks=config.callbacks,
     )
 
     # Define evaluator function for merge proposer
@@ -1590,11 +1637,13 @@ def optimize_anything(
         frontier_type=config.engine.frontier_type,
         logger=config.tracking.logger,
         experiment_tracker=experiment_tracker,
+        callbacks=config.callbacks,
         track_best_outputs=config.engine.track_best_outputs,
         display_progress_bar=config.engine.display_progress_bar,
         raise_on_exception=config.engine.raise_on_exception,
         stop_callback=stop_callback,
         val_evaluation_policy=config.engine.val_evaluation_policy,
+        acceptance_criterion=acceptance_criterion_instance,
         use_cloudpickle=config.engine.use_cloudpickle,
         evaluation_cache=evaluation_cache,
         callbacks=callbacks,
