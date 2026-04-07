@@ -9,6 +9,7 @@ pareto sets with scores, reject/accept, and tree-based parent-child lineage.
 import hashlib
 import json
 import os
+from collections import Counter
 from typing import Any
 
 from gepa.core.callbacks import (
@@ -191,8 +192,14 @@ class LogfireSpanCallback:
     def on_minibatch_sampled(self, event: MinibatchSampledEvent) -> None:
         """Push and pop so span is a leaf (otherwise training_end would pop wrong span)."""
         it = self._format_iteration_index(int(event["iteration"]))
+        prov = event.get("minibatch_provenance") or {}
+        role_summary = ""
+        per_task = prov.get("per_task_role") if isinstance(prov, dict) else None
+        if isinstance(per_task, dict) and per_task:
+            c = Counter(per_task.values())
+            role_summary = " · " + ",".join(f"{k}={v}" for k, v in sorted(c.items()))
         self._push_span(
-            f"On minibatch sampled: [{it}]({len(event['minibatch_ids'])}/{event['trainset_size']})",
+            f"On minibatch sampled: [{it}]({len(event['minibatch_ids'])}/{event['trainset_size']}){role_summary}",
             **event,
         )
         self._pop_span()

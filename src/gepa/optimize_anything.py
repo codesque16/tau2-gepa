@@ -138,6 +138,7 @@ from gepa.proposer.reflective_mutation.base import CandidateSelector, LanguageMo
 from gepa.proposer.reflective_mutation.reflective_mutation import ReflectiveMutationProposer
 from gepa.strategies.acceptance import AcceptanceCriterion, ImprovementOrEqualAcceptance, StrictImprovementAcceptance
 from gepa.strategies.batch_sampler import BatchSampler, EpochShuffledBatchSampler
+from gepa.strategies.vulnerable_min_errors_sampler import VulnerableMinErrorsBatchSampler
 from gepa.strategies.candidate_selector import (
     CurrentBestCandidateSelector,
     EpsilonGreedyCandidateSelector,
@@ -728,8 +729,14 @@ class ReflectionConfig:
 
     skip_perfect_score: bool = False
     perfect_score: float | None = None
-    batch_sampler: BatchSampler | Literal["epoch_shuffled"] = "epoch_shuffled"
+    batch_sampler: BatchSampler | Literal["epoch_shuffled", "vulnerable_min_errors"] = "epoch_shuffled"
     reflection_minibatch_size: int | None = None  # Default: 1 for single-instance mode, 3 otherwise
+    #: If set (with ``batch_sampler="vulnerable_min_errors"``), append random train ids until at least
+    #: this many subsample scores are below ``perfect_score``, or the train pool is exhausted.
+    min_errors_minibatch: int | None = None
+    #: If set, each minibatch includes up to this many ids drawn from the vulnerable set
+    #: (failed + corrected examples tracked across iterations). If ``None``, no forced inclusion.
+    vulnerable_minibatch_size: int | None = None
     module_selector: ReflectionComponentSelector | Literal["round_robin", "all"] = "round_robin"
     reflection_lm: LanguageModel | str | None = "openai/gpt-5.1"
     reflection_prompt_template: str | dict[str, str] | None = optimize_anything_reflection_prompt_template
@@ -1501,6 +1508,14 @@ def optimize_anything(
         config.reflection.batch_sampler = EpochShuffledBatchSampler(
             minibatch_size=config.reflection.reflection_minibatch_size, rng=rng
         )
+    elif config.reflection.batch_sampler == "vulnerable_min_errors":
+        config.reflection.batch_sampler = VulnerableMinErrorsBatchSampler(
+            minibatch_size=int(config.reflection.reflection_minibatch_size or 1),
+            rng=rng,
+            perfect_score=config.reflection.perfect_score,
+            min_errors_minibatch=config.reflection.min_errors_minibatch,
+            vulnerable_minibatch_size=config.reflection.vulnerable_minibatch_size,
+        )
 
     # --- 8. Build experiment tracker from TrackingConfig ---
     experiment_tracker = create_experiment_tracker(
@@ -1609,6 +1624,8 @@ def optimize_anything(
     # --- 14. Build callbacks (e.g. Logfire spans when use_logfire is True) ---
     callbacks: list[Any] | None = None
     callbacks_list: list[Any] = []
+    if config.callbacks:
+        callbacks_list.extend(list(config.callbacks))
     if config.tracking.use_logfire:
         callbacks_list.append(LogfireSpanCallback())
     if config.tracking.dump_visualizer_events:
@@ -1637,7 +1654,6 @@ def optimize_anything(
         frontier_type=config.engine.frontier_type,
         logger=config.tracking.logger,
         experiment_tracker=experiment_tracker,
-        callbacks=config.callbacks,
         track_best_outputs=config.engine.track_best_outputs,
         display_progress_bar=config.engine.display_progress_bar,
         raise_on_exception=config.engine.raise_on_exception,

@@ -79,6 +79,17 @@ class ExperimentTracker:
 
             import logfire  # type: ignore
 
+            # Host entrypoints (e.g. tau2_retail_mermaid, tau3_gepa) typically call
+            # ``configure_logfire_tau2`` *before* ``optimize_anything``. A second
+            # ``logfire.configure()`` shuts down and replaces the tracer provider's
+            # inner SDK provider, which breaks OTel parent context: ``LogfireSpanCallback``
+            # spans no longer nest under outer ``logfire.span(...)`` wrappers and may
+            # look like a single root line in Logfire.
+            default_lf = getattr(logfire, "DEFAULT_LOGFIRE_INSTANCE", None)
+            lf_config = getattr(default_lf, "config", None) if default_lf is not None else None
+            if lf_config is not None and getattr(lf_config, "_initialized", False):
+                return
+
             if self.logfire_api_key:
                 os.environ.setdefault("LOGFIRE_TOKEN", self.logfire_api_key)
                 logfire.login(api_key=self.logfire_api_key)

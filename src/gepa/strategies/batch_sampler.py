@@ -91,4 +91,11 @@ class EpochShuffledBatchSampler(BatchSampler[DataId, DataInst]):
         base_idx = base_idx % len(self.shuffled_ids)
         end_idx = base_idx + mb
         assert end_idx <= len(self.shuffled_ids)
-        return self.shuffled_ids[base_idx:end_idx]
+        out = self.shuffled_ids[base_idx:end_idx]
+        self._last_sample_provenance = {
+            "sampler": "epoch_shuffled",
+            "effective_minibatch_size": mb,
+            "epoch_index": self.epoch,
+            "slice": [base_idx, end_idx],
+        }
+        return out

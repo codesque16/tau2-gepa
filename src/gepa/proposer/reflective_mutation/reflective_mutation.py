@@ -5,7 +5,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from gepa.core.adapter import DataInst, GEPAAdapter, ProposalFn, RolloutOutput, Trajectory
+from gepa.core.adapter import DataInst, EvaluationBatch, GEPAAdapter, ProposalFn, RolloutOutput, Trajectory
 from gepa.core.callbacks import (
     CandidateSelectedEvent,
     EvaluationEndEvent,
@@ -27,11 +27,76 @@ from gepa.proposer.reflective_mutation.base import (
     ReflectionComponentSelector,
 )
 from gepa.strategies.batch_sampler import BatchSampler
+from gepa.strategies.vulnerable_min_errors_sampler import VulnerableMinErrorsBatchSampler
 from gepa.strategies.instruction_proposal import InstructionProposalSignature
 
 
 _GEPA_GENERATED_OPEN = "<gepa_generated>"
 _GEPA_GENERATED_CLOSE = "</gepa_generated>"
+
+
+def _merge_evaluation_batches(
+    left: EvaluationBatch[Any, Any],
+    right: EvaluationBatch[Any, Any],
+) -> EvaluationBatch[Any, Any]:
+    """Concatenate parent evaluation chunks in minibatch order (for incremental min-errors expansion)."""
+    n_l, n_r = len(left.scores), len(right.scores)
+    merged_outputs = left.outputs + right.outputs
+    merged_scores = left.scores + right.scores
+    if left.trajectories is None and right.trajectories is None:
+        merged_traj = None
+    else:
+        merged_traj = (left.trajectories or []) + (right.trajectories or [])
+    lo, ro = left.objective_scores, right.objective_scores
+    if lo is None and ro is None:
+        merged_obj = None
+    else:
+        merged_obj = (lo or [{} for _ in range(n_l)]) + (ro or [{} for _ in range(n_r)])
+    return EvaluationBatch(
+        outputs=merged_outputs,
+        scores=merged_scores,
+        trajectories=merged_traj,
+        objective_scores=merged_obj,
+    )
+
+
+def _minibatch_provenance_for_log(
+    batch_sampler: Any,
+    subsample_ids: list[DataId],
+    initial_draw_n: int,
+    vuln_sampler: VulnerableMinErrorsBatchSampler | None,
+    *,
+    min_errors_target: int | None,
+    parent_eval_error_count: int | None,
+) -> dict[str, Any]:
+    """Structured minibatch lineages for callbacks / Logfire (vulnerable vs random vs expansion)."""
+    meta = getattr(batch_sampler, "_last_sample_provenance", None)
+    per_task_role: dict[str, str] = {}
+    if isinstance(meta, dict) and meta.get("sampler") == "vulnerable_min_errors":
+        for x in meta.get("vulnerable_ids") or []:
+            per_task_role[str(x)] = "vulnerable_set"
+        for x in meta.get("random_train_fill_ids") or []:
+            per_task_role[str(x)] = "random_train_fill"
+    elif isinstance(meta, dict) and meta.get("sampler") == "epoch_shuffled":
+        for x in subsample_ids[:initial_draw_n]:
+            per_task_role[str(x)] = "epoch_shuffled"
+    else:
+        for x in subsample_ids[:initial_draw_n]:
+            per_task_role[str(x)] = "initial_draw"
+    for x in subsample_ids[initial_draw_n:]:
+        per_task_role[str(x)] = "min_errors_expansion"
+    out: dict[str, Any] = {
+        "sampler_metadata": meta,
+        "per_task_role": per_task_role,
+        "initial_draw_size": initial_draw_n,
+        "final_minibatch_size": len(subsample_ids),
+        "expansion_id_count": max(0, len(subsample_ids) - initial_draw_n),
+    }
+    if min_errors_target is not None:
+        out["min_errors_minibatch_target"] = min_errors_target
+    if parent_eval_error_count is not None:
+        out["parent_eval_error_count"] = parent_eval_error_count
+    return out
 
 
 def _apply_gepa_generated_template(template_text: str, generated_text: str) -> str:
@@ -112,6 +177,16 @@ class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
             raise ValueError(
                 "perfect_score must be provided when skip_perfect_score is True. "
                 "If you do not have a perfect target score, set skip_perfect_score=False."
+            )
+
+    def record_vulnerable_reflection_outcome(self, proposal: CandidateProposal, accepted: bool) -> None:
+        """Update vulnerable / error sets when using :class:`VulnerableMinErrorsBatchSampler`."""
+        if isinstance(self.batch_sampler, VulnerableMinErrorsBatchSampler):
+            self.batch_sampler.record_training_eval(
+                list(proposal.subsample_indices),
+                list(proposal.subsample_scores_before),
+                list(proposal.subsample_scores_after),
+                accepted=accepted,
             )
 
     def propose_new_texts(
@@ -211,11 +286,86 @@ class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
             step=i,
         )
 
-        subsample_ids = self.batch_sampler.next_minibatch_ids(self.trainset, state)
-        state.full_program_trace[-1]["subsample_ids"] = subsample_ids
-        minibatch = self.trainset.fetch(subsample_ids)
+        subsample_ids = list(self.batch_sampler.next_minibatch_ids(self.trainset, state))
+        initial_draw_n = len(subsample_ids)
+        curr_parent_ids = [p for p in state.parent_program_for_candidate[curr_prog_id] if p is not None]
+        is_seed_candidate = curr_prog_id == 0
+        vuln_sampler = self.batch_sampler if isinstance(self.batch_sampler, VulnerableMinErrorsBatchSampler) else None
+        train_metric_calls = 0
 
-        # Notify minibatch sampled
+        def _eval_parent_batch(mb: list[DataInst]) -> Any:
+            nonlocal train_metric_calls
+            notify_callbacks(
+                self.callbacks,
+                "on_evaluation_start",
+                EvaluationStartEvent(
+                    iteration=i,
+                    candidate_idx=curr_prog_id,
+                    batch_size=len(mb),
+                    capture_traces=True,
+                    parent_ids=curr_parent_ids,
+                    inputs=mb,
+                    is_seed_candidate=is_seed_candidate,
+                ),
+            )
+            out = self.adapter.evaluate(mb, curr_prog, capture_traces=True)
+            train_metric_calls += len(mb)
+            notify_callbacks(
+                self.callbacks,
+                "on_evaluation_end",
+                EvaluationEndEvent(
+                    iteration=i,
+                    candidate_idx=curr_prog_id,
+                    scores=out.scores,
+                    has_trajectories=bool(out.trajectories),
+                    parent_ids=curr_parent_ids,
+                    outputs=out.outputs,
+                    trajectories=out.trajectories,
+                    objective_scores=out.objective_scores,
+                    is_seed_candidate=is_seed_candidate,
+                ),
+            )
+            return out
+
+        minibatch = self.trainset.fetch(subsample_ids)
+        if vuln_sampler is not None and vuln_sampler.min_errors_minibatch is not None:
+            pool = [x for x in self.trainset.all_ids() if x not in set(subsample_ids)]
+            vuln_sampler.rng.shuffle(pool)
+            eval_curr = _eval_parent_batch(minibatch)
+            expanded = False
+            while (
+                vuln_sampler.count_errors(eval_curr.scores) < vuln_sampler.min_errors_minibatch
+                and pool
+            ):
+                expanded = True
+                new_id = pool.pop()
+                subsample_ids.append(new_id)
+                chunk_mb = self.trainset.fetch([new_id])
+                eval_chunk = _eval_parent_batch(chunk_mb)
+                eval_curr = _merge_evaluation_batches(eval_curr, eval_chunk)
+            if expanded:
+                minibatch = self.trainset.fetch(subsample_ids)
+            if len(subsample_ids) > initial_draw_n:
+                self.logger.log(
+                    f"Iteration {i}: Expanded reflection minibatch to {len(subsample_ids)} train examples "
+                    f"(min_errors_minibatch={vuln_sampler.min_errors_minibatch})."
+                )
+        else:
+            eval_curr = _eval_parent_batch(minibatch)
+
+        state.full_program_trace[-1]["subsample_ids"] = subsample_ids
+
+        state.increment_evals(train_metric_calls)
+
+        # After expansion, subsample_ids is the final reflection set (may exceed initial draw).
+        if vuln_sampler is not None:
+            _pe_ct = vuln_sampler.count_errors(eval_curr.scores)
+        elif self.perfect_score is not None:
+            t = float(self.perfect_score)
+            _pe_ct = sum(1 for s in eval_curr.scores if s is not None and s < t)
+        else:
+            _pe_ct = sum(1 for s in eval_curr.scores if s is not None and s < 1.0)
+        _mem_t: int | None = vuln_sampler.min_errors_minibatch if vuln_sampler is not None else None
         notify_callbacks(
             self.callbacks,
             "on_minibatch_sampled",
@@ -223,44 +373,17 @@ class ReflectiveMutationProposer(ProposeNewCandidate[DataId]):
                 iteration=i,
                 minibatch_ids=subsample_ids,
                 trainset_size=len(self.trainset),
+                minibatch_provenance=_minibatch_provenance_for_log(
+                    self.batch_sampler,
+                    subsample_ids,
+                    initial_draw_n,
+                    vuln_sampler,
+                    min_errors_target=_mem_t,
+                    parent_eval_error_count=_pe_ct,
+                ),
             ),
         )
-
-        # 1) Evaluate current program with traces
-        # Note: We don't use cache for capture_traces=True evaluations since we need fresh traces for reflection
-        curr_parent_ids = [p for p in state.parent_program_for_candidate[curr_prog_id] if p is not None]
-        is_seed_candidate = curr_prog_id == 0
-        notify_callbacks(
-            self.callbacks,
-            "on_evaluation_start",
-            EvaluationStartEvent(
-                iteration=i,
-                candidate_idx=curr_prog_id,
-                batch_size=len(minibatch),
-                capture_traces=True,
-                parent_ids=curr_parent_ids,
-                inputs=minibatch,
-                is_seed_candidate=is_seed_candidate,
-            ),
-        )
-        eval_curr = self.adapter.evaluate(minibatch, curr_prog, capture_traces=True)
-        state.increment_evals(len(subsample_ids))
         state.full_program_trace[-1]["subsample_scores"] = eval_curr.scores
-        notify_callbacks(
-            self.callbacks,
-            "on_evaluation_end",
-            EvaluationEndEvent(
-                iteration=i,
-                candidate_idx=curr_prog_id,
-                scores=eval_curr.scores,
-                has_trajectories=bool(eval_curr.trajectories),
-                parent_ids=curr_parent_ids,
-                outputs=eval_curr.outputs,
-                trajectories=eval_curr.trajectories,
-                objective_scores=eval_curr.objective_scores,
-                is_seed_candidate=is_seed_candidate,
-            ),
-        )
 
         # Update cache with current program evaluation results (for future reuse when capture_traces=False)
         if state.evaluation_cache is not None:

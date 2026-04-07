@@ -34,6 +34,11 @@ import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Protocol, TypedDict, runtime_checkable
 
+try:
+    from typing import NotRequired  # Python 3.11+
+except ImportError:
+    from typing_extensions import NotRequired
+
 if TYPE_CHECKING:
     from gepa.core.data_loader import DataLoader
     from gepa.core.state import GEPAState, ProgramIdx
@@ -133,6 +138,8 @@ class MinibatchSampledEvent(TypedDict):
     iteration: int
     minibatch_ids: list[Any]
     trainset_size: int
+    #: Sampler/min-errors expansion metadata for observability (e.g. Logfire).
+    minibatch_provenance: NotRequired[dict[str, Any] | None]
 
 
 class EvaluationStartEvent(TypedDict):

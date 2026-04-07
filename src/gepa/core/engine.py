@@ -648,18 +648,9 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     # Old behavior: regardless of whether we attempted, clear the flag before reflective
                     self.merge_proposer.last_iter_found_new_program = False
 
-                # 2) Reflective mutation proposer
-                notify_callbacks(
-                    self.callbacks,
-                    "on_proposal_start",
-                    {
-                        "iteration": state.i + 1,
-                        "parent_candidate_idx": None,
-                        "parent_candidate": state.program_candidates[0] if state.program_candidates else {},
-                        "components": [],
-                        "reflective_dataset": {},
-                    },
-                )
+                # 2) Reflective mutation proposer (on_proposal_start is emitted from inside propose()
+                # after parent minibatch eval + reflective dataset — not here, so Logfire/Task spans
+                # nest under training/eval, not under an empty "proposal start" span.)
                 proposal = self.reflective_proposer.propose(state)
                 if proposal is None:
                     notify_callbacks(
@@ -696,6 +687,7 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                         reject_msg = f"Iteration {state.i + 1}: Candidate rejected by acceptance criterion (old_sum={old_sum}, new_sum={new_sum}), skipping"
                         reject_reason = f"Candidate rejected by acceptance criterion (old_sum={old_sum}, new_sum={new_sum})"
                     self.logger.log(reject_msg)
+                    self.reflective_proposer.record_vulnerable_reflection_outcome(proposal, accepted=False)
                     # Log rejected proposal LM call to experiment tracker
                     self._log_proposal_lm_calls(state.i + 1, proposal, candidate_idx=-1)
                     # Notify candidate rejected
@@ -739,6 +731,8 @@ class GEPAEngine(Generic[DataId, DataInst, Trajectory, RolloutOutput]):
                     else:
                         accept_msg = f"Iteration {state.i + 1}: Candidate accepted (old_sum={old_sum}, new_sum={new_sum}). Continue to full eval and add to candidate pool."
                     self.logger.log(accept_msg)
+
+                self.reflective_proposer.record_vulnerable_reflection_outcome(proposal, accepted=True)
 
                 # Accept: full eval + add
                 notify_callbacks(
